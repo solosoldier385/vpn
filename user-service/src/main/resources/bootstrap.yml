@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: user-service
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+#        server-addr: 18.141.169.7:8848
+#        ip: 18.141.169.7
+        enabled: true
+        namespace: public
+
+# 可选
+server:
+  port: 8082

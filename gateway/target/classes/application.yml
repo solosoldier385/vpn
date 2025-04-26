@@ -1,0 +1,94 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: gateway
+  redis:
+    host: 127.0.0.1
+    port: 6379
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: user-swagger
+          uri: lb://user-service
+          predicates:
+            - Path=/api/user/swagger-ui.html, /api/user/swagger-ui/**, /api/user/v3/api-docs/**, /api/user/swagger-ui/index.html
+
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/user/(?<segment>.*)
+                replacement: /${segment}
+
+
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            #            - Path=/api/user/**
+            - Path=/api/user/**
+
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/user/(?<segment>.*)
+                replacement: /user/${segment}
+
+
+        - id: auth-swagger
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/swagger-ui.html, /api/auth/swagger-ui/**, /api/auth/v3/api-docs, /api/auth/swagger-ui/index.html
+
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/auth/(?<segment>.*)
+                replacement: /${segment}
+
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            #            - Path=/api/auth/**
+            - Path=/api/auth/**
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/auth/(?<segment>.*)
+                replacement: /auth/${segment}
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    urls:
+      - name: user
+        url: /api/user/v3/api-docs
+      - name: auth
+        url: /api/auth/v3/api-docs
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+
+
+
+
+
+logging:
+  level:
+    root: DEBUG # 设置根日志级别为 DEBUG
+
+#    org.springframework.cloud.gateway: DEBUG
+#    reactor.netty.http.client: DEBUG
+#    org.springdoc: DEBUG
+#    com.letsvpn.gateway: DEBUG # 或者用 INFO，如果 DEBUG 信息太多
+
