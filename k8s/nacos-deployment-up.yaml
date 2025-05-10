@@ -1,0 +1,119 @@
+# nacos-standard-network-with-log-mount.yaml
+# Nacos Deployment using standard Pod networking, connecting to MySQL via WireGuard IP,
+# and mounting logs directory to the host node for debugging.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-mysql-secret
+  namespace: default
+type: Opaque
+data:
+  # "LetsvpnUser@2025" Base64 编码后是 TGV0c3ZwblVzZXJAMjAyNQ==
+  mysql-password: TGV0c3ZwblVzZXJAMjAyNQ==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nacos
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nacos
+  template:
+    metadata:
+      labels:
+        app: nacos
+    spec:
+      # hostNetwork: true # <--- 确认已移除
+      volumes: # <--- 新增 volumes 定义
+        - name: nacos-logs-volume
+          hostPath:
+            # 将日志挂载到宿主机的 /var/log/nacos-pod-logs 目录
+            # 请确保 hk002 节点上此目录存在且有适当权限，或者使用 type: DirectoryOrCreate
+            path: /var/log/nacos-pod-logs
+            type: DirectoryOrCreate
+      containers:
+        - name: nacos
+          image: nacos/nacos-server:v2.2.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODE
+              value: "standalone"
+            - name: SPRING_DATASOURCE_PLATFORM
+              value: "mysql"
+            - name: MYSQL_SERVICE_HOST
+              value: "10.10.0.1"
+            - name: MYSQL_SERVICE_PORT
+              value: "3306"
+            - name: MYSQL_SERVICE_DB_NAME
+              value: "nacos_config"
+            - name: MYSQL_SERVICE_USER
+              value: "nacos_user"
+            - name: MYSQL_SERVICE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nacos-mysql-secret
+                  key: mysql-password
+            - name: MYSQL_JDBC_PARAM
+              value: "characterEncoding=utf8&connectTimeout=3000&socketTimeout=5000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+            - name: NACOS_AUTH_ENABLE
+              value: "false"
+            - name: NACOS_LOG_LEVEL
+              value: "debug"
+            - name: NACOS_JVM_OPTS
+              value: "-server -Xms1g -Xmx1g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/home/nacos/logs/java_heapdump.hprof -Duser.timezone=Asia/Shanghai"
+          ports:
+            - containerPort: 8848
+              name: http
+            - containerPort: 9848
+              name: grpc-client
+            - containerPort: 9849
+              name: grpc-cluster
+          volumeMounts:
+            - name: nacos-logs-volume
+              mountPath: /home/nacos/logs
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /nacos/actuator/health/readiness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /nacos/actuator/health/liveness
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nacos
+  namespace: default
+spec:
+  selector:
+    app: nacos
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8848
+      targetPort: http
+    - name: grpc-client
+      protocol: TCP
+      port: 9848
+      targetPort: grpc-client
+  type: ClusterIP

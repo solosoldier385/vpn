@@ -12,6 +12,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -38,17 +40,30 @@ public class JwtAuthenticationManager implements ReactiveAuthenticationManager {
 
         // 3. 获取用户名
         username = JwtUtils.getSubject(token);
-        if (username == null) {
-            // 按理说 validate 通过了这里应该能获取到，但加个保险
-            return Mono.error(new BadCredentialsException("无法从 Token 中解析用户信息"));
+        Long userId = JwtUtils.getUserIdFromToken(token); // 从token中获取userId
+
+
+
+
+        if (username == null || userId == null) { // 同时检查userId
+            return Mono.error(new BadCredentialsException("无法从 Token 中解析完整的用户信息 (username/userId)"));
         }
+
+        // 这里我们选择将 userId 放入 details，principal 仍然是 username。
+        Map<String, Object> details = new HashMap<>();
+        details.put("userId", userId);
+
+
+        UsernamePasswordAuthenticationToken authenticatedToken = new UsernamePasswordAuthenticationToken(
+                username,
+                token,
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+        authenticatedToken.setDetails(details); // 将包含userId的map设置为details
+
 
         // 4. 认证成功, 创建包含用户信息的 Authentication 对象
         // 这里的权限可以根据你的业务逻辑来设置，例如从 Token 的 claims 中读取
-        return Mono.just(new UsernamePasswordAuthenticationToken(
-                username,
-                token, // 密码/凭证 可以是 token 本身或 null
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")) // 示例权限
-        ));
+        return Mono.just(authenticatedToken);
     }
 }

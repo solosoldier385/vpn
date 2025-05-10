@@ -28,3 +28,14 @@ springdoc:
 #    org.springframework.cloud: DEBUG
 #    com.alibaba.nacos.shaded.io.perfmark: ERROR
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus # 至少包含 health
+  health:
+    readinessstate:
+      enabled: true
+    livelinessstate: # spring boot 2.3+ 应该是 livenessstate
+      enabled: true
+

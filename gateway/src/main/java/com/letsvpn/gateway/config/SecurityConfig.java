@@ -45,6 +45,14 @@ public class SecurityConfig {
             "/api/*/v3/api-docs/**"
     };
 
+    // 新增：放行 Gateway 自身的 Actuator 健康检查端点
+    private static final String[] ACTUATOR_HEALTH_PATHS = {
+            "/actuator/health/readiness",
+            "/actuator/health/liveness"
+            // 如果需要，也可以放行 /actuator/health
+            // "/actuator/health"
+    };
+
 //    @Bean
 //    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
 //        return http
@@ -92,6 +100,8 @@ public class SecurityConfig {
                         .pathMatchers(SWAGGER_PATHS).permitAll()
                         .pathMatchers(PUBLIC_API_PATHS).permitAll()
                         .pathMatchers(AGGREGATED_API_DOCS_PATHS).permitAll()
+                        .pathMatchers(ACTUATOR_HEALTH_PATHS).permitAll()  // <--- 新增：放行 Actuator 健康检查路径
+
                         // 6. 其他所有请求都需要认证
                         .anyExchange().authenticated()
                 )

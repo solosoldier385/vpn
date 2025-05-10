@@ -2,6 +2,8 @@
 package com.letsvpn.user.service.impl;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.data.entity.User;
 import com.letsvpn.common.data.entity.UserNodeConfig;
 import com.letsvpn.common.data.mapper.UserMapper;
@@ -9,13 +11,18 @@ import com.letsvpn.common.data.mapper.UserNodeConfigMapper;
 import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.mapper.NodeMapper;
 import com.letsvpn.user.service.WireGuardConfigService;
+import com.letsvpn.user.util.WireGuardKeyGenerator;
+import com.letsvpn.user.vo.UserNodeConfigVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional; // 推荐加上事务
+import org.springframework.util.CollectionUtils;
 
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 // 可能需要的其他 import，例如用于执行命令或调用库
 
 @Slf4j
@@ -192,4 +199,247 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         // sb.append("PersistentKeepalive = 25\n"); // 可选
         return sb.toString();
     }
+
+
+    @Override
+    @Transactional
+    public UserNodeConfig assignOrGetUserNodeConfig(Long userId, Long nodeId) {
+        // 检查用户和节点是否存在
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException("用户不存在: " + userId);
+        }
+        Node node = nodeMapper.selectById(nodeId);
+        if (node == null) {
+            throw new BizException("节点不存在: " + nodeId);
+        }
+
+        // 检查用户是否有权限访问该节点 (基于用户level和node.levelRequired)
+        if (node.getLevelRequired() != null && user.getLevel() != null && user.getLevel() < node.getLevelRequired()) {
+            // 进一步检查VIP是否过期
+            if(Boolean.FALSE.equals(node.getIsFree())) { // 如果不是免费节点，才严格检查VIP
+                if(user.getVipExpireTime() == null || user.getVipExpireTime().isBefore(LocalDateTime.now())){
+                    log.warn("用户 {} (等级 {}) 尝试访问付费节点 {} (要求等级 {}), 但其VIP已过期或等级不足。",
+                            userId, user.getLevel(), nodeId, node.getLevelRequired());
+                    throw new BizException("您的VIP已过期或等级不足，无法分配或使用该节点。");
+                }
+            } else if (Boolean.TRUE.equals(node.getIsFree()) && node.getLevelRequired() > 0 && user.getLevel() < node.getLevelRequired()) {
+                // 即使是免费节点，如果它也设置了levelRequired（例如限制游客使用特定免费节点），也需要判断
+                log.warn("用户 {} (等级 {}) 尝试访问免费节点 {} (要求等级 {}), 但其等级不足。",
+                        userId, user.getLevel(), nodeId, node.getLevelRequired());
+                throw new BizException("您的等级不足，无法分配或使用该免费节点。");
+            }
+        }
+
+
+        QueryWrapper<UserNodeConfig> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("user_id", userId).eq("node_id", nodeId);
+        UserNodeConfig existingConfig = userNodeConfigMapper.selectOne(queryWrapper);
+
+        if (existingConfig != null) {
+            log.info("用户 {} 在节点 {} 上已存在配置，直接返回。配置ID: {}", userId, nodeId, existingConfig.getId());
+            // 确保返回的配置是激活的，如果不是，可以考虑重新激活或提示
+            if (Boolean.FALSE.equals(existingConfig.getIsActive())) {
+                log.info("用户 {} 在节点 {} 的现有配置(ID:{})为非激活状态，将尝试激活。", userId, nodeId, existingConfig.getId());
+                existingConfig.setIsActive(true);
+                existingConfig.setUpdatedAt(LocalDateTime.now());
+                userNodeConfigMapper.updateById(existingConfig);
+            }
+            return existingConfig;
+        }
+
+        log.info("为用户 {} 在节点 {} 上创建新的WireGuard配置。", userId, nodeId);
+        UserNodeConfig newConfig = new UserNodeConfig();
+        newConfig.setUserId(userId);
+        newConfig.setNodeId(nodeId);
+
+        WireGuardKeyGenerator.KeyPair keyPair = WireGuardKeyGenerator.generateKeyPair();
+        newConfig.setWgPeerPublicKey(keyPair.getPublicKey()); // 这是客户端（Peer）的公钥，由服务端生成
+        // 客户端的私钥需要安全地传递给客户端，服务端不应该保存客户端私钥。
+        // 如果wg_private_key是服务端的，那它属于Node实体。
+
+        String nextAvailableIp = getNextAvailableIpForNode(node);
+        newConfig.setWgAllowedIps(nextAvailableIp + "/32");
+
+        newConfig.setIsActive(true);
+        newConfig.setCreatedAt(LocalDateTime.now());
+        newConfig.setUpdatedAt(LocalDateTime.now());
+
+        userNodeConfigMapper.insert(newConfig);
+        log.info("新配置创建成功，ID: {}，用户ID: {}, 节点ID: {}, 公钥: {}, IP: {}",
+                newConfig.getId(), userId, nodeId, newConfig.getWgPeerPublicKey(), newConfig.getWgAllowedIps());
+        return newConfig;
+    }
+
+    private String getNextAvailableIpForNode(Node node) {
+        // ... (保持或改进你的IPAM逻辑) ...
+        // 这是一个关键的生产逻辑，需要健壮实现
+        // 示例（非常简化，需要替换）:
+        // 获取节点配置的网络基地址，例如 node.getWgInterfaceAddress() -> "10.0.1.1/24"
+        // 从这个CIDR中找到一个未被UserNodeConfig使用的IP
+        // SELECT wg_allowed_ips FROM user_node_config WHERE node_id = :nodeId
+        // 解析这些IP，找到一个可用的。
+
+        // 临时示例，确保这个逻辑是正确的
+        String networkSegment = node.getWgAddress(); // 例如 "10.0.1.0/24" 或 "10.0.1.1/24"
+        if (networkSegment == null || !networkSegment.contains("/")) {
+            log.error("节点 {} 的网络段 (wg_address) 配置错误: {}", node.getId(), networkSegment);
+            throw new BizException("节点网络配置错误，无法分配IP");
+        }
+        // 简化假设：总是能找到一个IP，实际需要更复杂的逻辑
+        // 例如，从 "10.0.1.1/24" 中分配 "10.0.1.X"
+        // 这里只是一个占位符，你需要一个真正的IPAM
+        long count = userNodeConfigMapper.selectCount(new QueryWrapper<UserNodeConfig>().eq("node_id", node.getId()));
+        String[] networkParts = networkSegment.split("/")[0].split("\\.");
+        if (networkParts.length != 4) throw new BizException("节点网络地址格式错误");
+
+        long nextIpSuffix = 2 + count; // 假设从.2开始，且IP是连续分配的
+        if (nextIpSuffix > 254) throw new BizException("节点IP池已满");
+
+        return networkParts[0] + "." + networkParts[1] + "." + networkParts[2] + "." + nextIpSuffix;
+    }
+
+
+//    @Override
+//    public Map<String, Object> generateClientConfigById(Long userNodeConfigId, Long userId) {
+//        // ... (之前的实现逻辑，确保从nodeMapper获取节点信息) ...
+//        UserNodeConfig config = userNodeConfigMapper.selectById(userNodeConfigId);
+//        if (config == null) throw new BizException("用户节点配置不存在: " + userNodeConfigId);
+//        if (!config.getUserId().equals(userId)) throw new BizException("无权访问该节点配置");
+//        if (Boolean.FALSE.equals(config.getIsActive())) throw new BizException("该节点配置当前未激活");
+//
+//        Node node = nodeMapper.selectById(config.getNodeId());
+//        if (node == null || !Objects.equals(node.getStatus(), 0)) throw new BizException("关联的节点当前不可用");
+//
+//        User user = userMapper.selectById(userId);
+//        if (user == null) throw new BizException("用户不存在");
+//        if (node.getLevelRequired() != null && user.getLevel() != null && user.getLevel() < node.getLevelRequired()) {
+//            if(Boolean.FALSE.equals(node.getIsFree())) {
+//                if(user.getVipExpireTime() == null || user.getVipExpireTime().isBefore(LocalDateTime.now())){
+//                    throw new BizException("您的VIP已过期或等级不足，无法使用该节点。");
+//                }
+//            } else if (Boolean.TRUE.equals(node.getIsFree()) && node.getLevelRequired() > 0 && user.getLevel() < node.getLevelRequired()) {
+//                throw new BizException("您的等级不足，无法使用该免费节点。");
+//            }
+//        }
+//
+//        StringBuilder sb = new StringBuilder();
+//        sb.append("[Interface]\n");
+//        sb.append("# Client PublicKey: ").append(config.getWgPeerPublicKey()).append("\n");
+//        sb.append("# 请将与上述公钥对应的客户端私钥填入下一行\n");
+//        sb.append("PrivateKey = <在此填写您的客户端私钥>\n");
+//        sb.append("Address = ").append(config.getWgAllowedIps()).append("\n");
+//        if (node.getWgDns() != null && !node.getWgDns().isEmpty()) {
+//            sb.append("DNS = ").append(node.getWgDns()).append("\n");
+//        }
+//        sb.append("\n[Peer]\n");
+//        sb.append("# Server Node: ").append(node.getName()).append("\n");
+//        sb.append("PublicKey = ").append(node.getWgPublicKey()).append("\n"); // 服务器节点的公钥
+//        sb.append("AllowedIPs = 0.0.0.0/0, ::/0\n");
+//        sb.append("Endpoint = ").append(node.getIp()).append(":").append(node.getPort()).append("\n");
+////        if (node.getWgPresharedKey() != null && !node.getWgPresharedKey().isEmpty()) {
+////            sb.append("PresharedKey = ").append(node.getWgPresharedKey()).append("\n");
+////        }
+//        sb.append("PersistentKeepalive = 25\n");
+//
+//        Map<String, Object> result = new java.util.HashMap<>();
+//        result.put("config_string", sb.toString());
+//        result.put("client_public_key", config.getWgPeerPublicKey()); // 客户端应使用的公钥
+//        result.put("server_public_key", node.getWgPublicKey());   // 服务器的公钥
+//        result.put("server_endpoint", node.getIp() + ":" + node.getPort());
+//        result.put("assigned_ip", config.getWgAllowedIps());
+//        result.put("dns_servers", node.getWgDns());
+////        if (node.getWgPresharedKey() != null && !node.getWgPresharedKey().isEmpty()) {
+////            result.put("preshared_key", node.getWgPresharedKey());
+////        }
+//        result.put("note", "请将您本地生成的与公钥 " + config.getWgPeerPublicKey() + " 配对的私钥填入配置文件中的PrivateKey字段。");
+//
+//        return result;
+//    }
+
+    /**
+     * 实现：根据用户ID获取该用户的所有节点配置列表 (返回VO)。
+     */
+    @Override
+    public List<UserNodeConfigVO> getUserNodeConfigsByUserId(Long userId) {
+        if (userId == null) {
+            log.warn("尝试获取用户节点配置列表失败：userId为空。");
+            return Collections.emptyList();
+        }
+
+        QueryWrapper<UserNodeConfig> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("user_id", userId);
+        // queryWrapper.eq("is_active", true); // 根据业务需求决定是否只查询激活的
+        queryWrapper.orderByAsc("node_id");
+
+        List<UserNodeConfig> configs = userNodeConfigMapper.selectList(queryWrapper);
+
+        if (CollectionUtils.isEmpty(configs)) {
+            log.info("用户ID {} 没有找到任何节点配置。", userId);
+            return Collections.emptyList();
+        }
+
+        // 获取所有相关的节点ID，以便一次性查询节点信息，避免N+1查询
+        List<Long> nodeIds = configs.stream()
+                .map(UserNodeConfig::getNodeId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, Node> nodeMap = Collections.emptyMap();
+        if (!CollectionUtils.isEmpty(nodeIds)) {
+            List<Node> nodes = nodeMapper.selectBatchIds(nodeIds);
+            nodeMap = nodes.stream().collect(Collectors.toMap(Node::getId, Function.identity()));
+        }
+
+        // 组装VO列表
+        Map<Long, Node> finalNodeMap = nodeMap; // effectively final for lambda
+        List<UserNodeConfigVO> vos = configs.stream().map(config -> {
+            Node node = finalNodeMap.get(config.getNodeId());
+            UserNodeConfigVO.UserNodeConfigVOBuilder voBuilder = UserNodeConfigVO.builder();
+
+            // 从 UserNodeConfig 复制基础属性
+            voBuilder.configId(config.getId());
+            voBuilder.userId(config.getUserId());
+            voBuilder.nodeId(config.getNodeId());
+            voBuilder.wgPeerPublicKey(config.getWgPeerPublicKey());
+            voBuilder.wgAllowedIps(config.getWgAllowedIps());
+            voBuilder.isActive(config.getIsActive());
+            voBuilder.createdAt(config.getCreatedAt());
+
+            // 从关联的 Node 填充信息
+            if (node != null) {
+                voBuilder.nodeName(node.getName());
+                // 假设Node实体有countryCode和locationName字段用于组合显示
+                // String locationDisplay = buildNodeLocationDisplay(node.getCountryCode(), node.getLocationName());
+                //voBuilder.nodeLocation(node.getLocation()); // 假设Node实体有location字段
+                voBuilder.nodeServerAddress(node.getIp()); // 或 node.getHost()
+                voBuilder.nodeServerPort(node.getPort());
+                voBuilder.nodeLevelRequired(node.getLevelRequired());
+                voBuilder.isNodeFree(node.getIsFree());
+            } else {
+                log.warn("用户配置 configId={} 关联的 nodeId={} 未找到对应的Node实体！", config.getId(), config.getNodeId());
+                voBuilder.nodeName("节点信息丢失"); // 或其他默认值
+                voBuilder.nodeLocation("未知位置");
+            }
+            return voBuilder.build();
+        }).collect(Collectors.toList());
+
+        log.info("为用户ID {} 查询到并转换了 {} 条 UserNodeConfigVO。", userId, vos.size());
+        return vos;
+    }
+
+    // 辅助方法示例，用于构建节点位置显示 (你可以根据Node实体实际字段调整)
+    // private String buildNodeLocationDisplay(String countryCode, String locationName) {
+    //     if (countryCode != null && !countryCode.isEmpty()) {
+    //         try {
+    //             // 这里需要一个库或方法将国家代码转为emoji旗帜
+    //             // String flag = CountryCodeToEmoji.getFlag(countryCode);
+    //             // return flag + " " + (locationName != null ? locationName : "");
+    //             return countryCode.toUpperCase() + " " + (locationName != null ? locationName : ""); // 简化版
+    //         } catch (Exception e) {
+    //             log.warn("无法转换国家代码 {} 为旗帜emoji", countryCode);
+    //         }
+    //     }
+    //     return locationName != null ? locationName : "未知";
+    // }
 }

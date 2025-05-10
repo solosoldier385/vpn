@@ -35,7 +35,7 @@ public class AuthService {
         }
 
 
-        String token = JwtUtils.generateToken(user.getUsername());
+        String token = JwtUtils.generateToken(user.getUsername(),user.getId());
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         result.put("expiresIn", JwtUtils.getExpiration(token));

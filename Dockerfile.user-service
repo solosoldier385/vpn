@@ -1,0 +1,55 @@
+# Dockerfile.user-service (放置在项目根目录 vpn/ 下)
+# 构建命令示例 (在 vpn/ 目录下执行):
+# docker build -t solosoldier385/user-service:1.0 -f Dockerfile.user-service .
+
+# --- Build Stage ---
+# 使用包含 Maven 和 Java 17 的镜像
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+# 设置构建阶段的工作目录
+WORKDIR /build
+
+# 复制所有模块的 pom.xml 和父 pom.xml
+COPY pom.xml ./
+COPY common-core/pom.xml ./common-core/
+COPY common-data/pom.xml ./common-data/
+COPY auth-service/pom.xml ./auth-service/
+COPY gateway/pom.xml ./gateway/
+COPY user-service/pom.xml ./user-service/
+COPY order-service/pom.xml ./order-service/
+# 如果还有其他模块，也一并复制它们的 pom.xml
+
+# 下载所有依赖 (在父模块层面执行，Maven 会处理所有子模块)
+RUN mvn dependency:go-offline -B
+
+# 复制所有模块的源代码
+COPY common-core/src ./common-core/src/
+COPY common-data/src ./common-data/src/
+COPY auth-service/src ./auth-service/src/
+COPY gateway/src ./gateway/src/
+COPY user-service/src ./user-service/src/
+COPY order-service/src ./order-service/src/
+# 如果还有其他模块的源代码，也一并复制
+
+# 构建特定的 user-service 模块
+# Maven 会自动处理模块间的依赖关系
+RUN mvn package -pl user-service -am -DskipTests
+
+# --- Runtime Stage ---
+# 使用精简的 JRE 17 镜像作为最终运行环境
+FROM eclipse-temurin:17-jre-focal
+
+# 设置应用工作目录
+WORKDIR /app
+
+# 从构建阶段复制最终生成的 user-service JAR 文件
+# 假设 artifactId 是 user-service, version 是 1.0-SNAPSHOT
+COPY --from=builder /build/user-service/target/user-service-1.0-SNAPSHOT.jar ./app.jar
+
+# 暴露 user-service 监听的端口 (根据 bootstrap.yml 是 8082)
+EXPOSE 8082
+
+# 设置容器启动命令 (建议添加 JVM 参数，并通过环境变量管理)
+# ENV JAVA_OPTS="-Duser.timezone=Asia/Shanghai -Xms256m -Xmx512m"
+# ENTRYPOINT ["java", ${JAVA_OPTS}, "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

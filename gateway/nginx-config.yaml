@@ -1,0 +1,21 @@
+# nginx-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-conf
+  namespace: default
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+
+        root /var/www/static;
+        index index.html index.htm;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        
+    }

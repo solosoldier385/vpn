@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>狗狗VPN - 安全快速的 VPN 服务</title>
+    <style>
+        /* --- 基本重置与全局设置 --- */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007AFF; /* 灵感来源的主蓝色调 */
+            --background-color: #FFFFFF;
+            --text-color: #212529; /* 深灰色文本 */
+            --light-gray: #F8F9FA; /* 浅灰色背景/分隔 */
+            --white-color: #FFFFFF;
+            --link-color: #007AFF;
+            --button-hover-color: #0056b3; /* 按钮悬停颜色 */
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; /* 使用系统默认无衬线字体 */
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--background-color);
+        }
+
+        .container {
+            max-width: 1140px; /* 内容最大宽度 */
+            margin-left: auto;
+            margin-right: auto;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        /* --- 导航栏基础样式 --- */
+        header {
+            background-color: var(--white-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 10px 0;
+            position: sticky; /* 可选：使导航栏固定 */
+            top: 0;
+            z-index: 1000;
+        }
+
+        nav.container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-logo {
+            font-weight: bold;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 1.5em;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 20px; /* 链接间距 */
+        }
+
+        nav ul li a {
+            text-decoration: none;
+            color: var(--text-color);
+            padding: 5px 10px;
+        }
+
+        nav ul li a:hover,
+        nav ul li a:focus {
+            color: var(--primary-color);
+        }
+
+        .button-login {
+            background-color: var(--primary-color);
+            color: var(--white-color);
+            border-radius: 4px;
+            padding: 8px 15px!important; /* 覆盖默认padding */
+        }
+        .button-login:hover {
+            background-color: var(--button-hover-color);
+            color: var(--white-color)!important; /* 保持白色 */
+        }
+
+
+        /* --- 区块通用样式 --- */
+        section {
+            padding: 60px 0; /* 区块上下内边距 */
+            text-align: center;
+        }
+
+        section h2 {
+            font-size: 2em;
+            margin-bottom: 30px;
+            color: var(--primary-color);
+        }
+
+        /* --- 首屏区域 (Hero) --- */
+        #hero {
+            background-color: var(--light-gray); /* 可选的浅灰背景 */
+            padding-top: 80px;
+            padding-bottom: 80px;
+        }
+
+        #hero h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+        }
+
+        #hero.subtitle {
+            font-size: 1.2em;
+            color: #555;
+            margin-bottom: 30px;
+            max-width: 600px; /* 限制副标题宽度 */
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        #hero.feature-snippets {
+            margin-top: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        /* --- 功能特性 (Features) --- */
+        #features {
+            background-color: var(--white-color);
+        }
+        .feature-list {
+            display: grid; /* 使用 Grid 布局 */
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* 响应式列 */
+            gap: 30px; /* 特性项之间的间距 */
+            margin-top: 40px;
+        }
+
+        .feature-item {
+            background-color: var(--white-color); /* 可给特性项加背景 */
+            padding: 20px;
+            border-radius: 8px;
+            /* box-shadow: 0 2px 5px rgba(0,0,0,0.05); 可选阴影 */
+            text-align: center;
+        }
+
+        .feature-item h3 {
+            font-size: 1.3em;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .feature-item p {
+            font-size: 0.95em;
+            color: #555;
+        }
+
+
+        /* --- 下载区域 (Download) --- */
+        #download {
+            background-color: var(--light-gray); /* 可选背景色 */
+        }
+        #download p {
+            margin-bottom: 30px;
+            color: #555;
+        }
+        .download-buttons {
+            display: flex;
+            flex-wrap: wrap; /* 允许换行 */
+            justify-content: center;
+            gap: 15px; /* 按钮间距 */
+        }
+
+
+        /* --- 页脚 (Footer) --- */
+        footer {
+            background-color: #333; /* 深色页脚背景 */
+            color: var(--white-color);
+            padding: 40px 0;
+            text-align: center;
+        }
+
+        .footer-links a {
+            color: var(--white-color);
+            text-decoration: none;
+            margin: 0 10px;
+            font-size: 0.9em;
+        }
+
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+
+        .social-media {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .social-media a {
+            color: var(--white-color);
+            text-decoration: none;
+            margin: 0 8px;
+            font-size: 1.2em; /* 图标大小 */
+        }
+
+        .copyright {
+            margin-top: 20px;
+            font-size: 0.85em;
+            color: #ccc;
+        }
+
+        /* --- 通用按钮样式 --- */
+        .button, a.button { /* 同时应用于<a>和<button> */
+            display: inline-block;
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .primary-button {
+            background-color: var(--primary-color);
+            color: var(--white-color);
+        }
+
+        .primary-button:hover,
+        .primary-button:focus {
+            background-color: var(--button-hover-color);
+            color: var(--white-color);
+        }
+
+        .download-button {
+            background-color: var(--primary-color);
+            color: var(--white-color);
+        }
+        .download-button:hover {
+            background-color: var(--button-hover-color);
+        }
+
+        /* --- 占位符样式 (仅用于演示) --- */
+        .hero-image-placeholder,
+        .feature-icon-placeholder,
+        .platform-icons-placeholder {
+            display: inline-block; /* 或 block, 根据需要 */
+            font-style: italic;
+            color: #888;
+            border: 1px dashed #ccc; /* 添加虚线框以示区分 */
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .hero-image-placeholder { width: 300px; height: 200px; background-color: #e0e0e0; margin: 20px auto; line-height: 180px; }
+        .feature-icon-placeholder { width: 50px; height: 50px; background-color: #e0e0e0; margin: 0 auto 10px; border-radius: 50%; line-height: 30px; padding: 0; font-size: 10px; }
+        .platform-icons-placeholder { margin-top: 20px; font-size: 14px; color: #666; border: none; padding: 0; }
+
+
+        /* --- 响应式设计基础 (示例) --- */
+        @media (max-width: 768px) {
+            nav.container {
+                flex-direction: column;
+                align-items: center; /* 居中对齐 */
+            }
+            nav ul {
+                margin-top: 15px;
+                flex-direction: column; /* 垂直排列 */
+                gap: 10px;
+                width: 100%;
+                align-items: center; /* 居中对齐 */
+            }
+            nav ul li {
+                width: auto; /* 恢复自动宽度 */
+                text-align: center;
+            }
+            .button-login {
+                margin-top: 10px;
+            }
+            #hero h1 {
+                font-size: 2em;
+            }
+            #hero.subtitle {
+                font-size: 1em;
+            }
+            .feature-list {
+                grid-template-columns: 1fr; /* 移动端单列 */
+            }
+            .download-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            .download-buttons a.button {
+                width: 80%; /* 调整按钮宽度 */
+                max-width: 300px; /* 最大宽度 */
+            }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <nav>
+        <div class="container">
+            <a href="#" class="brand-logo">
+                <img src="logo.jpg" alt="VPN Logo" style="height: 40px;">
+            </a>
+            <ul>
+                <li><a href="#">首页</a></li>
+                <li><a href="#features">功能特性</a></li>
+                <li><a href="#">价格</a></li>
+                <li><a href="#">帮助中心</a></li>
+                <li><a href="#" class="button button-login">登录</a></li>
+            </ul>
+        </div>
+
+    </nav>
+</header>
+
+<main>
+    <section id="hero">
+<!--        <div class="container">-->
+<!--            <h1>非常可靠的 VPN 服务</h1>-->
+<!--            <p class="subtitle">随时随地保护您的在线隐私和安全，提供快速、稳定的全球网络连接。</p>-->
+<!--            <div class="hero-image-placeholder">[英雄区图片占位]</div>-->
+<!--            <a href="#download" class="button primary-button">立即下载客户端</a>-->
+<!--            <p class="feature-snippets">✓ 秒级连接 ✓ 全球服务器 ✓ 严格无日志政策</p>-->
+<!--        </div>-->
+
+        <div class="container">
+            <h1>非常可靠的 VPN 服务</h1>
+            <p class="subtitle">随时随地保护您的在线隐私和安全，提供快速、稳定的全球网络连接。</p>
+            <img src="ChatGPT.png" alt="VPN 服务" class="hero-image">
+            <a href="#download" class="button primary-button">立即下载客户端</a>
+            <p class="feature-snippets">✓ 秒级连接 ✓ 全球服务器 ✓ 严格无日志政策</p>
+        </div>
+
+    </section>
+
+    <section id="features">
+        <div class="container">
+            <h2>核心功能与优势</h2>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <div class="feature-icon-placeholder">
+                        <img src="https://cdn-icons-png.flaticon.com/512/709/709496.png" alt="极速稳定连接" style="width:100%;height:100%;object-fit:contain;">
+                    </div>
+                    <h3>极速稳定连接</h3>
+                    <p>采用先进技术优化网络路径，确保您无论身处何地都能享受如丝般顺滑的网络体验。</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon-placeholder">
+                        <img src="https://cdn-icons-png.flaticon.com/512/484/484167.png" alt="全球服务器覆盖" style="width:100%;height:100%;object-fit:contain;">
+                    </div>
+                    <h3>全球服务器覆盖</h3>
+                    <p>我们在全球部署了众多高速服务器节点，让您可以轻松连接到世界各地，自由访问所需内容。</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon-placeholder">
+                        <img src="https://cdn-icons-png.flaticon.com/512/747/747376.png" alt="保护您的在线隐私" style="width:100%;height:100%;object-fit:contain;">
+                    </div>
+                    <h3>保护您的在线隐私</h3>
+                    <p>采用银行级加密标准保护您的网络流量，隐藏您的真实 IP 地址，严格执行无日志政策。</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon-placeholder">
+                        <img src="https://cdn-icons-png.flaticon.com/512/747/747545.png" alt="多平台支持" style="width:100%;height:100%;object-fit:contain;">
+                    </div>
+                    <h3>多平台支持</h3>
+                    <p>一个账户即可在 Windows, macOS, iOS, Android 等主流操作系统和设备上无缝使用。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="download">
+        <div class="container">
+            <h2>立即下载客户端</h2>
+            <p>为您的设备获取最新版本的应用程序。</p>
+            <div class="download-buttons">
+
+                <a href="#" class="button download-button" style="display: flex; flex-direction: column; align-items: center;">
+                    <div class="feature-icon-placeholder" style="margin-bottom: 10px;">
+                        <img src="https://cdn-icons-png.flaticon.com/512/732/732225.png" alt="多平台支持" style="width:50px;height:50px;object-fit:contain;">
+                    </div>
+                    <span>下载 Windows 版</span>
+                </a>
+                <a href="#" class="button download-button" style="display: flex; flex-direction: column; align-items: center;">
+                    <div class="feature-icon-placeholder" style="margin-bottom: 10px;">
+                        <img src="https://cdn-icons-png.flaticon.com/512/888/888841.png" alt="多平台支持" style="width:50px;height:50px;object-fit:contain;">
+                    </div>
+                    <span>下载 macOS 版</span>
+                </a>
+                <a href="#" class="button download-button" style="display: flex; flex-direction: column; align-items: center;">
+                    <div class="feature-icon-placeholder" style="margin-bottom: 10px;">
+                        <img src="https://cdn-icons-png.flaticon.com/512/888/888857.png" alt="多平台支持" style="width:50px;height:50px;object-fit:contain;">
+                    </div>
+                    <span>下载 Android 版</span>
+                </a>
+                <a href="#" class="button download-button" style="display: flex; flex-direction: column; align-items: center;">
+                    <div class="feature-icon-placeholder" style="margin-bottom: 10px;">
+                        <img src="https://cdn-icons-png.flaticon.com/512/888/888841.png" alt="多平台支持" style="width:50px;height:50px;object-fit:contain;">
+                    </div>
+                    <span>下载 iOS 版</span>
+                </a>
+
+            </div>
+            <div class="platform-icons-placeholder"></div>
+        </div>
+    </section>
+
+</main>
+
+<footer>
+    <div class="container">
+        <div class="footer-links">
+            <a href="#">关于我们</a>
+            <a href="#">博客</a>
+            <a href="#">联系我们</a>
+            <a href="#">隐私政策</a>
+            <a href="#">服务条款</a>
+        </div>
+
+
+        <div class="social-media">
+            <a href="https://www.facebook.com/" target="_blank">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/Facebook_f_logo_%282019%29.svg" alt="Facebook" style="width:40px;height:40px;margin:0 8px;">
+            </a>
+            <a href="https://www.instagram.com/" target="_blank">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Instagram_logo_2022.svg/2048px-Instagram_logo_2022.svg.png" alt="Instagram" style="width:40px;height:40px;margin:0 8px;">
+            </a>
+        </div>
+
+
+        <p class="copyright">&copy; 2024 狗狗VPN. 保留所有权利。</p>
+    </div>
+</footer>
+
+</body>
+</html>

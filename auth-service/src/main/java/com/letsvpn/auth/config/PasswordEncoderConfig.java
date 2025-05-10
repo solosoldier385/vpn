@@ -49,7 +49,7 @@ public class PasswordEncoderConfig {
         return http
                 .csrf().disable()
                 .authorizeRequests()
-                .antMatchers("/auth/**", "/ping", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                .antMatchers("/auth/**", "/ping", "/swagger-ui/**", "/v3/api-docs/**","/actuator/health/readiness","/actuator/health/liveness").permitAll()
                 .anyRequest().authenticated()
                 .and()
                 .build();

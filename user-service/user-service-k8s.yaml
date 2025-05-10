@@ -1,0 +1,98 @@
+# user-service-k8s.yaml
+
+---
+# --- ConfigMap for user-service ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: default
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SPRING_APPLICATION_NAME: "user-service"
+
+  SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: "nacos.default.svc.cluster.local:8848"
+  SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: "public"
+  SPRING_CLOUD_NACOS_DISCOVERY_ENABLED: "true"
+
+  SPRING_DATASOURCE_URL: "jdbc:mysql://10.10.0.1:3306/letsvpn?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8&connectTimeout=3000&socketTimeout=5000&autoReconnect=true"
+  SPRING_DATASOURCE_USERNAME: "letsvpn_user"
+
+  SPRING_REDIS_HOST: "10.10.0.1"
+  SPRING_REDIS_PORT: "6379"
+
+  JAVA_OPTS: "-Duser.timezone=Asia/Shanghai -Xms256m -Xmx512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/java_heapdump.hprof"
+
+---
+# --- Deployment for user-service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: default
+  labels:
+    app: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: solosoldier385/user-service:1.5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: user-service-config
+            - secretRef:
+                name: auth-service-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+# --- Service for user-service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: default
+  labels:
+    app: user-service
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8082
+      targetPort: http
+

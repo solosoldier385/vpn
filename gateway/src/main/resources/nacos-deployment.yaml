@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nacos-deployment
+  labels:
+    app: nacos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nacos
+  template:
+    metadata:
+      labels:
+        app: nacos
+    spec:
+      containers:
+        - name: nacos
+          image: nacos/nacos-server:v2.2.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PREFER_HOST_MODE
+              value: "hostname"
+            - name: MODE
+              value: "standalone"
+            - name: SPRING_DATASOURCE_PLATFORM
+              value: "mysql"
+            - name: MYSQL_SERVICE_HOST
+              value: "10.10.0.1"
+            - name: MYSQL_SERVICE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: nacos-cm
+                  key: mysql.port
+            - name: MYSQL_SERVICE_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: nacos-cm
+                  key: mysql.db.name
+            - name: MYSQL_SERVICE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: nacos-cm
+                  key: mysql.user
+            - name: MYSQL_SERVICE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nacos-mysql-secret
+                  key: MYSQL_SERVICE_PASSWORD
+            - name: NACOS_JVM_OPTS
+              value: "-Duser.timezone=Asia/Shanghai"
+          ports:
+            - containerPort: 8848
+              name: http
+            - containerPort: 9848
+              name: grpc-old
+            - containerPort: 9849
+              name: grpc-new
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /nacos/actuator/health/readiness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /nacos/actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nacos-service
+  labels:
+    app: nacos
+spec:
+  selector:
+    app: nacos
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8848
+      targetPort: http
+  type: ClusterIP

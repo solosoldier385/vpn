@@ -1,0 +1,122 @@
+# gateway-k8s.yaml
+# 包含 ConfigMap, Deployment, 和 Service for gateway
+# !!! 警告: 使用 hostNetwork: true 作为网络问题的临时解决方案 !!!
+# !!! 警告: 假设 Redis 不需要密码，如有需要请创建并引用 Secret !!!
+
+# --- ConfigMap for gateway (移除 JAVA_OPTS) ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: default
+data:
+  # Spring Boot / Spring Cloud 相关配置
+  SPRING_PROFILES_ACTIVE: "prod"
+  SPRING_APPLICATION_NAME: "gateway"
+
+  # Nacos 配置 (因为都使用 hostNetwork, 使用 localhost 连接)
+  SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: "nacos.default.svc.cluster.local:8848"
+  SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: "public"
+  SPRING_CLOUD_NACOS_DISCOVERY_ENABLED: "true"
+
+  # Redis 配置 (使用公网 IP)
+  SPRING_REDIS_HOST: "10.10.0.1"
+  SPRING_REDIS_PORT: "6379"
+
+  # JAVA_OPTS: (已移除，将在 Deployment 的 args 中直接设置)
+
+---
+# --- Deployment for gateway (修改 container args) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: default
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          # 使用您为 gateway 构建并推送的镜像标签 (例如 1.4 或 1.5)
+          image: solosoldier385/gateway:1.5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            # 仍然从 ConfigMap 获取 Spring 配置
+            - configMapRef:
+                name: gateway-config
+            # 如果 Redis 有密码，需要引用包含 Redis 密码的 Secret
+          # 使用 args 直接传递 JVM 参数给 java 命令
+          command: ["java"]
+          args:
+            - "-Duser.timezone=Asia/Shanghai"
+            - "-Xms256m"
+            - "-Xmx800m"
+            - "-XX:+HeapDumpOnOutOfMemoryError"
+            - "-XX:HeapDumpPath=/tmp/java_heapdump.hprof"
+            - "-Dio.netty.transport.noNative=true"
+            - "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED"
+            - "--add-opens=java.base/java.nio=ALL-UNNAMED"
+            - "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+            - "--add-opens=java.base/java.lang=ALL-UNNAMED"
+            - "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
+            - "--add-opens=java.base/java.util=ALL-UNNAMED"
+            - "--add-opens=java.base/java.security=ALL-UNNAMED"
+            - "--add-opens=java.base/sun.security.provider=ALL-UNNAMED"
+            - "--add-opens=java.base/sun.security.util=ALL-UNNAMED"
+            - "-jar"
+            - "/app/app.jar"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 6
+---
+# --- Service for gateway ---
+# ... (Service 部分保持不变) ...
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: default
+  labels:
+    app: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+

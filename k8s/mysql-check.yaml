@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-check
+spec:
+  hostNetwork: true
+  containers:
+    - name: checker
+      image: alpine:3.18
+      command: ["/bin/sh", "-c", "sleep 3600"]
+      tty: true

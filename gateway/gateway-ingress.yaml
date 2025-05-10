@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - solopayment.xyz
+      secretName: solopayment-tls-secret
+  rules:
+    - host: solopayment.xyz
+      http:
+        paths:
+          # Swagger 路径放在前面，确保它们优先匹配
+          - path: /swagger-ui.html
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+          - path: /swagger-ui/
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+          - path: /v3/api-docs/
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+          # API 路径
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+          # 最后是根路径，静态资源会匹配这个
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-static-service
+                port:
+                  number: 80

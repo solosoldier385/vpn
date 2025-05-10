@@ -6,7 +6,9 @@ spring:
   application:
     name: gateway
   redis:
+#    host: 10.10.0.1
     host: 127.0.0.1
+
     port: 6379
 
   cloud:
@@ -85,10 +87,27 @@ springdoc:
 
 logging:
   level:
-    root: INFO # 设置根日志级别为 DEBUG
+    root: debug # 设置根日志级别为 DEBUG
 
 #    org.springframework.cloud.gateway: DEBUG
 #    reactor.netty.http.client: DEBUG
 #    org.springdoc: DEBUG
 #    com.letsvpn.gateway: DEBUG # 或者用 INFO，如果 DEBUG 信息太多
 
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics # 至少包含 health
+  endpoint:
+    health:
+      show-details: always  # 让 /actuator/health 显示具体组件状态
+      probes:
+        enabled: true
+  health:
+    readinessstate:
+      enabled: true
+    livelinessstate: # spring boot 2.3+ 应该是 livenessstate
+      enabled: true
