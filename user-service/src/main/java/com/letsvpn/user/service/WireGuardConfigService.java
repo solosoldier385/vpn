@@ -1,7 +1,7 @@
 package com.letsvpn.user.service;
 
-import com.letsvpn.common.data.entity.UserNodeConfig;
-import com.letsvpn.user.vo.UserNodeConfigVO;
+import com.letsvpn.common.data.entity.UserNode;
+import com.letsvpn.user.vo.UserNodeVO;
 
 import java.util.List;
 
@@ -16,7 +16,7 @@ public interface WireGuardConfigService {
      */
     String generateClientConfig(String username, Long nodeId);
 
-    UserNodeConfig assignOrGetUserNodeConfig(Long userId, Long nodeId);
+    UserNode assignOrGetUserNodeConfig(Long userId, Long nodeId);
 
     /**
      * 根据用户ID获取该用户的所有节点配置列表 (返回VO)。
@@ -24,6 +24,6 @@ public interface WireGuardConfigService {
      * @param userId 用户ID
      * @return 该用户的 UserNodeConfigVO 列表，如果没有则返回空列表。
      */
-    List<UserNodeConfigVO> getUserNodeConfigsByUserId(Long userId);
+    List<UserNodeVO> getUserNodeConfigsByUserId(Long userId);
 
 }

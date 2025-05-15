@@ -10,11 +10,14 @@
         <module name="auth-service" />
         <module name="common-data" />
         <module name="user-service" />
-        <module name="order-service" />
+        <module name="pay-service" />
         <module name="gateway" />
         <module name="common-core" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="order-service" target="17" />
+    </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
@@ -23,6 +26,7 @@
       <module name="common-data" options="-parameters" />
       <module name="gateway" options="-parameters" />
       <module name="order-service" options="-parameters" />
+      <module name="pay-service" options="-parameters" />
       <module name="user-service" options="-parameters" />
     </option>
   </component>

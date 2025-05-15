@@ -3,15 +3,20 @@ package com.letsvpn.user.service.impl;
 
 import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.data.entity.User;
+import com.letsvpn.common.data.entity.UserNode;
 import com.letsvpn.common.data.mapper.UserMapper;
 import com.letsvpn.user.dto.ActivateVipSubscriptionRequest;
 import com.letsvpn.user.dto.ActivateVipSubscriptionResponse;
 import com.letsvpn.user.dto.CurrentUserVipProfileResponse;
+import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.entity.UserSubscription;
 import com.letsvpn.user.enums.VipLevel;
+import com.letsvpn.user.mapper.NodeMapper;
 import com.letsvpn.user.mapper.SubscriptionPlanMapper;
 import com.letsvpn.user.mapper.UserSubscriptionMapper;
 import com.letsvpn.user.service.UserVipService;
+import com.letsvpn.user.service.WireGuardConfigService;
+import com.letsvpn.user.service.WireguardNacosConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,10 +40,19 @@ public class UserVipServiceImpl implements UserVipService {
     private UserMapper userMapper;
 
     @Autowired
+    private NodeMapper nodeMapper;
+
+    @Autowired
     private UserSubscriptionMapper userSubscriptionMapper;
 
     @Autowired
     private SubscriptionPlanMapper subscriptionPlanMapper; // 确保注入
+
+    @Autowired
+    private WireGuardConfigService wireGuardConfigService;
+
+    @Autowired
+    private WireguardNacosConfigService wireguardNacosConfigService;
 
 
     @Override
@@ -135,6 +149,65 @@ public class UserVipServiceImpl implements UserVipService {
         // 这里可以考虑把 orderId 也存入 user_subscription 表，方便追踪
         userSubscriptionMapper.insert(subscription);
         log.info("用户订阅记录已创建：userSubscriptionId={}, userId={}, planId={}", subscription.getId(), user.getId(), request.getPlanId());
+
+        // --- New logic: Provision user on nodes and update Nacos ---
+        log.info("Attempting to provision user {} on relevant nodes and update Nacos.", user.getId());
+        try {
+            QueryWrapper<Node> nodeQueryWrapper = new QueryWrapper<>();
+            nodeQueryWrapper.eq("status", 0);
+            nodeQueryWrapper.eq("is_free",0);
+
+            // 0 for active nodes (assuming 0 means active)
+
+            // The assignOrGetUserNodeConfig method in WireGuardConfigServiceImpl already handles
+            // permission checks (user level vs node.levelRequired), so we can get all active nodes.
+            List<Node> allActiveNodes = nodeMapper.selectList(nodeQueryWrapper);
+
+            if (allActiveNodes.isEmpty()) {
+                log.info("No active nodes found to provision for user {}.", user.getId());
+            } else {
+                log.info("Found {} active nodes. Processing for user {}.", allActiveNodes.size(), user.getId());
+            }
+
+            for (Node node : allActiveNodes) {
+                try {
+                    log.info("Processing node ID: {} (Name: {}) for user ID: {}", node.getId(), node.getName(), user.getId());
+                    // This method will create UserNode if not exists (generating keys, IP)
+                    // or update existing one. It also contains permission logic.
+                    UserNode userNodeConfig = wireGuardConfigService.assignOrGetUserNodeConfig(user.getId(), node.getId());
+
+                    if (userNodeConfig != null && Boolean.TRUE.equals(userNodeConfig.getIsActive())) {
+                        log.info("Successfully assigned/updated user {} on node {}. UserNodeConfig ID: {}. Attempting to publish Nacos config.", user.getId(), node.getId(), userNodeConfig.getId());
+                        boolean nacosSuccess = wireguardNacosConfigService.publishConfigForNode(node.getId());
+                        if (nacosSuccess) {
+                            log.info("Nacos configuration published successfully for node ID: {}", node.getId());
+                        } else {
+                            log.warn("Failed to publish Nacos configuration for node ID: {}. Manual check might be needed.", node.getId());
+                            // Depending on strictness, you might want to collect these errors
+                        }
+                    } else if (userNodeConfig == null) {
+                        log.warn("User {} could not be assigned to node {} (assignOrGetUserNodeConfig returned null, possibly due to permissions or node setup). Skipping Nacos update for this node.", user.getId(), node.getId());
+                    } else { // userNodeConfig not null but not active
+                        log.warn("User {} assignment to node {} resulted in an inactive UserNodeConfig (ID: {}). Skipping Nacos update for this node.", user.getId(), node.getId(), userNodeConfig.getId());
+                    }
+                } catch (BizException e) {
+                    // BizException from assignOrGetUserNodeConfig usually means user doesn't have permission for this node,
+                    // or node is not configured properly for assignment. This is often an expected scenario for some nodes.
+                    log.warn("Business exception while processing node ID: {} for user ID: {}. Message: '{}'. This node may not be applicable or accessible for the user.", node.getId(), user.getId(), e.getMessage());
+                } catch (Exception e) {
+                    // Catch other unexpected exceptions during node processing or Nacos publishing.
+                    log.error("Unexpected error processing node ID: {} for user ID: {}. Nacos update for this node might be skipped.", node.getId(), user.getId(), e);
+                    // Log and continue, or collect errors to indicate partial failure.
+                }
+            }
+            log.info("Finished processing nodes for user {}.", user.getId());
+        } catch (Exception e) {
+            log.error("An error occurred during the node provisioning and Nacos update phase for user {}: {}", user.getId(), e.getMessage(), e);
+            // This is an error in the overall node processing logic (e.g., fetching allActiveNodes).
+            // The main VIP activation is still considered successful at this point.
+        }
+        // --- End of new logic ---
+
 
         return ActivateVipSubscriptionResponse.builder()
                 .success(true)

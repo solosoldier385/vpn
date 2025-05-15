@@ -1,14 +1,18 @@
 package com.letsvpn.user.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.core.response.R;
 import com.letsvpn.common.core.util.JwtUtils;
 import com.letsvpn.common.data.entity.User;
 import com.letsvpn.common.data.mapper.UserMapper;
 import com.letsvpn.user.dto.NodeRegistrationRequest;
+import com.letsvpn.user.dto.NodeUpdateRequest;
 import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.mapper.NodeMapper;
+import com.letsvpn.user.service.NodeService;
 import com.letsvpn.user.service.WireGuardConfigService;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -24,10 +28,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.BeanUtils;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -41,6 +47,7 @@ import java.util.List;
 public class NodeController {
 
     private final NodeMapper nodeMapper;
+    private final NodeService nodeService;
     private final UserMapper userMapper; // UserMapper 可能也需要注入 (虽然代码里没标 @Autowired 但 @RequiredArgsConstructor 会处理 final)
     private WireGuardConfigService wireGuardConfigService;
 
@@ -115,6 +122,7 @@ public class NodeController {
 
 
     // --- 新增生成配置文件的接口 ---
+    @Hidden
     @PostMapping("/{nodeId}/wireguard-config")
     @Operation(summary = "获取指定节点的 WireGuard 配置文件",
             description = "为当前认证用户生成指定节点的 WireGuard 客户端配置文件。需要有效的 Bearer Token 认证。服务器会生成密钥对并将完整配置返回。",
@@ -156,63 +164,64 @@ public class NodeController {
     }
 
 
-    // --- 新增的节点注册接口 ---
+    @Hidden // <--- 添加 @Hidden 注解
     @PostMapping("/register")
-    @Operation(summary = "注册新节点", description = "接收来自新部署节点的上报信息，并将其添加到数据库。**注意：此接口需要严格的安全控制！**")
-    @RequestBody(description = "新节点注册信息",
-            content = @Content(mediaType = "application/json",
-                    schema = @Schema(implementation = NodeRegistrationRequest.class)))
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "节点注册成功", content = @Content(mediaType = "application/json", schema = @Schema(implementation = R.class))),
-            @ApiResponse(responseCode = "400", description = "请求参数无效", content = @Content),
-            @ApiResponse(responseCode = "401", description = "未授权访问此接口", content = @Content), // 需要实现安全控制
-            @ApiResponse(responseCode = "500", description = "服务器内部错误（如数据库插入失败）", content = @Content)
-    })
-    public R<Long> registerNode(
-            @Validated @org.springframework.web.bind.annotation.RequestBody NodeRegistrationRequest request // 使用 Spring 的 @RequestBody 并启用验证
-            // TODO: 在这里添加安全校验逻辑! 例如检查 X-API-Key 或调用方 IP 地址
-            // 例如: @RequestHeader("X-Provisioning-Key") String apiKey
-            // if (!isValidApiKey(apiKey)) { return R.fail("无效的 API Key"); }
+    // Operation 和其他 Swagger 注解可以保留，但 Hidden 会使其不显示
+    @Operation(summary = "注册新节点 (脚本调用)", description = "接收来自新部署节点的上报信息，并将其添加到数据库。**需要严格的安全控制！**")
+    public R<Node> registerNode( // 返回类型改为 R<Node> 以便返回完整节点信息
+                                 @Validated @RequestBody NodeRegistrationRequest request
+                                 // TODO: 在这里添加安全校验逻辑! 例如检查 X-API-Key 或调用方 IP 地址
+                                 // 例如: @RequestHeader("X-Provisioning-Key") String apiKey
+                                 // if (!isValidApiKey(apiKey)) { return R.fail(HttpStatus.UNAUTHORIZED.value(), "无效的 API Key"); }
     ) {
-        log.info("收到节点注册请求: {}", request.getName());
-
-        // 1. 参数校验 (通过 @Validated 和 DTO 中的注解完成基本校验)
-
-        // 2. 检查节点是否已存在 (例如，根据 IP 和端口) - 可选但推荐
-         QueryWrapper<Node> queryWrapper = new QueryWrapper<>();
-         queryWrapper.eq("ip", request.getIp()).eq("port", request.getPort());
-         if (nodeMapper.selectCount(queryWrapper) > 0) {
-             log.warn("节点已存在 (IP: {}, Port: {})", request.getIp(), request.getPort());
-             return R.fail("节点已存在");
-         }
-
-        // 3. 将 DTO 转换为 Node 实体
-        Node node = new Node();
-        BeanUtils.copyProperties(request, node); // 自动复制同名属性
-
-        // 4. 设置默认值或需要后端设置的值
-        node.setStatus(0); // 默认状态为 0 (正常)
-        // createdAt 和 updatedAt 可以由 MyBatis Plus 自动填充 (如果配置了) 或手动设置
-        node.setCreatedAt(LocalDateTime.now());
-        node.setUpdatedAt(LocalDateTime.now());
-        // node.setWgPrivateKey(null); // 确保私钥不被保存（如果 Node 实体还有这个字段）
-
-        // 5. 插入数据库
+        // 安全性 TODO: 比如验证请求来源的 API Key 或 IP 地址
         try {
-            int result = nodeMapper.insert(node); // 使用 BaseMapper 的 insert 方法
-            if (result > 0 && node.getId() != null) {
-                log.info("新节点注册成功，ID: {}", node.getId());
-                return R.success(node.getId()); // 返回新生成的节点 ID
-            } else {
-                log.error("节点插入数据库失败，没有返回 ID 或影响行数为 0");
-                return R.fail("节点注册失败，无法保存到数据库");
-            }
+            Node newNode = nodeService.createNode(request);
+            return R.success(newNode);
+        } catch (BizException e) {
+            log.warn("注册节点失败: {}", e.getMessage());
+            // 根据 BizException 中的具体错误信息或自定义错误码返回不同状态
+            return R.fail(e.getMessage()); // 可以考虑更细致的错误码
         } catch (Exception e) {
-            log.error("注册节点时发生数据库异常", e);
-            // 可以根据具体异常类型返回更详细的错误，例如唯一键冲突
-            return R.fail("节点注册失败：" + e.getMessage());
+            log.error("注册节点时发生意外错误", e);
+            return R.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(),"节点注册失败，服务器内部错误");
         }
     }
+
+    @Hidden // <--- 添加 @Hidden 注解
+    @PutMapping("/{nodeId}") // 路径从 /{nodeId}/port 改为 /{nodeId}
+    @Operation(summary = "更新节点信息 (脚本调用)", description = "更新指定节点的信息。**需要严格的安全控制！**")
+    public R<Node> updateNode( // 方法名和参数 DTO 更改
+                               @Parameter(description = "要更新的节点 ID", required = true) @PathVariable Long nodeId,
+                               @Validated @RequestBody NodeUpdateRequest request,
+                               // TODO: 在这里添加安全校验逻辑! 例如检查 X-API-Key 或调用方 IP 地址
+                               HttpServletRequest httpServletRequest
+    ) {
+        // 安全性 TODO: 比如验证请求来源的 API Key 或 IP 地址
+        String requestIp = httpServletRequest.getRemoteAddr();
+
+        log.info("收到来自IP: {} 对节点ID: {} 的更新请求，数据: {}", requestIp, nodeId, request);
+
+        try {
+            Node updatedNode = nodeService.updateNode(nodeId, request, requestIp);
+            return R.success(updatedNode);
+        } catch (BizException e) {
+            log.warn("更新节点 ID {} 失败: {}", nodeId, e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("未找到ID为")) {
+                return R.fail(HttpStatus.NOT_FOUND.value(), e.getMessage());
+            }
+            return R.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("更新节点 ID {} 时发生意外错误: {}", nodeId, request, e);
+            return R.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(),"更新节点信息失败，服务器内部错误");
+        }
+    }
+
+
+
+
+
+
 
 
 

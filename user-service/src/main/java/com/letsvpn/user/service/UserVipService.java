@@ -15,7 +15,7 @@ public interface UserVipService {
     CurrentUserVipProfileResponse getCurrentUserVipProfile(Long userId);
 
     /**
-     * 激活或更新用户的VIP订阅 (由order-service在支付成功后调用)
+     * 激活或更新用户的VIP订阅 (由pay-service在支付成功后调用)
      * @param request 包含用户ID, 订单ID, 套餐信息等
      * @return 激活结果
      */

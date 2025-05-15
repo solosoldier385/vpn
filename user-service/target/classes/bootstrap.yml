@@ -11,6 +11,12 @@ spring:
 #        ip: 18.141.169.7
         enabled: true
         namespace: public
+        config:
+          file-extension: yaml
+          shared-configs:
+            - data-id: common-mysql.yaml
+              group: LETSVPNSHARED_GROUP
+              refresh: true
 
 # 可选
 server:

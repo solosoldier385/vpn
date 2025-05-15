@@ -13,8 +13,8 @@ import java.time.LocalDateTime;
 @Builder // 可选
 @NoArgsConstructor // 可选
 @AllArgsConstructor // 可选
-@TableName("user_node_config")
-public class UserNodeConfig {
+@TableName("user_node")
+public class UserNode {
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -25,6 +25,8 @@ public class UserNodeConfig {
 
     // 对应 wg_peer_public_key
     private String wgPeerPublicKey; // 服务端为用户生成的公钥
+
+    private String wgPeerPrivateKey; // 服务端为用户生成的私钥
 
     // 对应 wg_allowed_ips
     private String wgAllowedIps; // 分配给用户的内网 IP (CIDR)

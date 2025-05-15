@@ -9,7 +9,7 @@ metadata:
   namespace: default
 type: Opaque
 data:
-  # "LetsvpnUser@2025" Base64 编码后是 TGV0c3ZwblVzZXJAMjAyNQ==
+    # "LetsvpnUser@2025" Base64 编码后是 TGV0c3ZwblVzZXJAMjAyNQ==
   mysql-password: TGV0c3ZwblVzZXJAMjAyNQ==
 ---
 apiVersion: apps/v1

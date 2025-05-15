@@ -28,7 +28,7 @@ public class UserVipInternalController {
     private SubscriptionPlanService subscriptionPlanService;
 
 
-    @Operation(summary = "激活用户VIP订阅 (供order-service调用)")
+    @Operation(summary = "激活用户VIP订阅 (供pay-service调用)")
     @PostMapping("/activate")
     public R<ActivateVipSubscriptionResponse> activateSubscription(@Valid @RequestBody ActivateVipSubscriptionRequest request) {
         // 此处应有服务间认证逻辑，例如检查内部调用token或IP白名单
@@ -40,7 +40,7 @@ public class UserVipInternalController {
         }
     }
 
-    @Operation(summary = "获取套餐详情 (供order-service调用)")
+    @Operation(summary = "获取套餐详情 (供pay-service调用)")
     @GetMapping("/plan/{planId}")
     public R<SubscriptionPlan> getPlanDetailsForOrder(@PathVariable Long planId) {
         // 此处应有服务间认证逻辑

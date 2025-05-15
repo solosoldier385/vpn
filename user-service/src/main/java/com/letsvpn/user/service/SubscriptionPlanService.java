@@ -15,8 +15,8 @@ public interface SubscriptionPlanService {
     List<VipPlanClientViewResponse> getActiveDisplayPlans();
 
     /**
-     * (内部接口，供order-service调用) 根据套餐ID获取套餐详情
-     * order-service 在创建订单时，可能需要此接口来获取价格、时长、对应VIP等级等信息以确保一致性。
+     * (内部接口，供pay-service调用) 根据套餐ID获取套餐详情
+     * pay-service 在创建订单时，可能需要此接口来获取价格、时长、对应VIP等级等信息以确保一致性。
      * @param planId 套餐ID
      * @return 套餐实体，或一个包含必要信息的内部DTO
      */

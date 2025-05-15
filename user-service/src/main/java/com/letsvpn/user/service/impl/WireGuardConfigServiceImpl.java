@@ -5,14 +5,14 @@ package com.letsvpn.user.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.data.entity.User;
-import com.letsvpn.common.data.entity.UserNodeConfig;
+import com.letsvpn.common.data.entity.UserNode;
 import com.letsvpn.common.data.mapper.UserMapper;
-import com.letsvpn.common.data.mapper.UserNodeConfigMapper;
+import com.letsvpn.common.data.mapper.UserNodeMapper;
 import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.mapper.NodeMapper;
 import com.letsvpn.user.service.WireGuardConfigService;
 import com.letsvpn.user.util.WireGuardKeyGenerator;
-import com.letsvpn.user.vo.UserNodeConfigVO;
+import com.letsvpn.user.vo.UserNodeVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,7 +32,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
     private final UserMapper userMapper;
     private final NodeMapper nodeMapper;
-    private final UserNodeConfigMapper userNodeConfigMapper;
+    private final UserNodeMapper userNodeMapper;
     // 可能还需要注入用于IP分配、密钥生成、节点更新的服务或组件
 
     @Override
@@ -71,16 +71,16 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
         // 4. 保存/更新 Peer 配置到数据库
         // 尝试查找现有配置
-        Optional<UserNodeConfig> existingConfigOpt = userNodeConfigMapper.findByUserIdAndNodeId(user.getId(), nodeId);
+        Optional<UserNode> existingConfigOpt = userNodeMapper.findByUserIdAndNodeId(user.getId(), nodeId);
 
-        UserNodeConfig configToSave;
+        UserNode configToSave;
         if (existingConfigOpt.isPresent()) {
             // 更新现有配置
             configToSave = existingConfigOpt.get();
             log.info("用户 {} 在节点 {} 已有配置，进行更新...", username, nodeId);
         } else {
             // 创建新配置
-            configToSave = UserNodeConfig.builder()
+            configToSave = UserNode.builder()
                     .userId(user.getId())
                     .nodeId(nodeId)
                     .isActive(true) // 默认激活
@@ -94,9 +94,9 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         // 这里假设用 BaseMapper 的 saveOrUpdate (需要实体类有 @TableId)
         // 或者更精确地：
         if (configToSave.getId() != null) {
-            userNodeConfigMapper.updateById(configToSave);
+            userNodeMapper.updateById(configToSave);
         } else {
-            userNodeConfigMapper.insert(configToSave);
+            userNodeMapper.insert(configToSave);
         }
         log.info("数据库 Peer 配置已保存/更新.");
 
@@ -151,7 +151,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         log.warn("allocateIpAddress() 需要实现!");
         // 临时返回占位符 - 必须替换
         // 注意：需要根据 node 的 wg_address 动态生成，这里只是示例
-        List<String> usedIps = userNodeConfigMapper.findAllocatedIpsByNodeId(nodeId);
+        List<String> usedIps = userNodeMapper.findAllocatedIpsByNodeId(nodeId);
         // 简单示例：从 10.0.0.3 开始找第一个没用的
         String baseIp = "10.0.0."; // 假设网段是这个，需要从 node.wgAddress 解析
         int startIp = 3;
@@ -203,7 +203,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
     @Override
     @Transactional
-    public UserNodeConfig assignOrGetUserNodeConfig(Long userId, Long nodeId) {
+    public UserNode assignOrGetUserNodeConfig(Long userId, Long nodeId) {
         // 检查用户和节点是否存在
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -232,9 +232,9 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         }
 
 
-        QueryWrapper<UserNodeConfig> queryWrapper = new QueryWrapper<>();
+        QueryWrapper<UserNode> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId).eq("node_id", nodeId);
-        UserNodeConfig existingConfig = userNodeConfigMapper.selectOne(queryWrapper);
+        UserNode existingConfig = userNodeMapper.selectOne(queryWrapper);
 
         if (existingConfig != null) {
             log.info("用户 {} 在节点 {} 上已存在配置，直接返回。配置ID: {}", userId, nodeId, existingConfig.getId());
@@ -243,18 +243,19 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
                 log.info("用户 {} 在节点 {} 的现有配置(ID:{})为非激活状态，将尝试激活。", userId, nodeId, existingConfig.getId());
                 existingConfig.setIsActive(true);
                 existingConfig.setUpdatedAt(LocalDateTime.now());
-                userNodeConfigMapper.updateById(existingConfig);
+                userNodeMapper.updateById(existingConfig);
             }
             return existingConfig;
         }
 
         log.info("为用户 {} 在节点 {} 上创建新的WireGuard配置。", userId, nodeId);
-        UserNodeConfig newConfig = new UserNodeConfig();
+        UserNode newConfig = new UserNode();
         newConfig.setUserId(userId);
         newConfig.setNodeId(nodeId);
 
         WireGuardKeyGenerator.KeyPair keyPair = WireGuardKeyGenerator.generateKeyPair();
         newConfig.setWgPeerPublicKey(keyPair.getPublicKey()); // 这是客户端（Peer）的公钥，由服务端生成
+        newConfig.setWgPeerPrivateKey(keyPair.getPrivateKey());
         // 客户端的私钥需要安全地传递给客户端，服务端不应该保存客户端私钥。
         // 如果wg_private_key是服务端的，那它属于Node实体。
 
@@ -265,7 +266,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         newConfig.setCreatedAt(LocalDateTime.now());
         newConfig.setUpdatedAt(LocalDateTime.now());
 
-        userNodeConfigMapper.insert(newConfig);
+        userNodeMapper.insert(newConfig);
         log.info("新配置创建成功，ID: {}，用户ID: {}, 节点ID: {}, 公钥: {}, IP: {}",
                 newConfig.getId(), userId, nodeId, newConfig.getWgPeerPublicKey(), newConfig.getWgAllowedIps());
         return newConfig;
@@ -289,7 +290,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         // 简化假设：总是能找到一个IP，实际需要更复杂的逻辑
         // 例如，从 "10.0.1.1/24" 中分配 "10.0.1.X"
         // 这里只是一个占位符，你需要一个真正的IPAM
-        long count = userNodeConfigMapper.selectCount(new QueryWrapper<UserNodeConfig>().eq("node_id", node.getId()));
+        long count = userNodeMapper.selectCount(new QueryWrapper<UserNode>().eq("node_id", node.getId()));
         String[] networkParts = networkSegment.split("/")[0].split("\\.");
         if (networkParts.length != 4) throw new BizException("节点网络地址格式错误");
 
@@ -361,18 +362,18 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
      * 实现：根据用户ID获取该用户的所有节点配置列表 (返回VO)。
      */
     @Override
-    public List<UserNodeConfigVO> getUserNodeConfigsByUserId(Long userId) {
+    public List<UserNodeVO> getUserNodeConfigsByUserId(Long userId) {
         if (userId == null) {
             log.warn("尝试获取用户节点配置列表失败：userId为空。");
             return Collections.emptyList();
         }
 
-        QueryWrapper<UserNodeConfig> queryWrapper = new QueryWrapper<>();
+        QueryWrapper<UserNode> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId);
         // queryWrapper.eq("is_active", true); // 根据业务需求决定是否只查询激活的
         queryWrapper.orderByAsc("node_id");
 
-        List<UserNodeConfig> configs = userNodeConfigMapper.selectList(queryWrapper);
+        List<UserNode> configs = userNodeMapper.selectList(queryWrapper);
 
         if (CollectionUtils.isEmpty(configs)) {
             log.info("用户ID {} 没有找到任何节点配置。", userId);
@@ -381,7 +382,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
         // 获取所有相关的节点ID，以便一次性查询节点信息，避免N+1查询
         List<Long> nodeIds = configs.stream()
-                .map(UserNodeConfig::getNodeId)
+                .map(UserNode::getNodeId)
                 .distinct()
                 .collect(Collectors.toList());
 
@@ -393,32 +394,36 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
         // 组装VO列表
         Map<Long, Node> finalNodeMap = nodeMap; // effectively final for lambda
-        List<UserNodeConfigVO> vos = configs.stream().map(config -> {
+        List<UserNodeVO> vos = configs.stream().map(config -> {
             Node node = finalNodeMap.get(config.getNodeId());
-            UserNodeConfigVO.UserNodeConfigVOBuilder voBuilder = UserNodeConfigVO.builder();
+            UserNodeVO.UserNodeVOBuilder voBuilder = UserNodeVO.builder();
 
             // 从 UserNodeConfig 复制基础属性
             voBuilder.configId(config.getId());
             voBuilder.userId(config.getUserId());
             voBuilder.nodeId(config.getNodeId());
-            voBuilder.wgPeerPublicKey(config.getWgPeerPublicKey());
-            voBuilder.wgAllowedIps(config.getWgAllowedIps());
+//            voBuilder.wgPeerPublicKey(config.getWgPeerPublicKey());
+            voBuilder.wgAddress(config.getWgAllowedIps());
             voBuilder.isActive(config.getIsActive());
             voBuilder.createdAt(config.getCreatedAt());
 
             // 从关联的 Node 填充信息
             if (node != null) {
-                voBuilder.nodeName(node.getName());
+                voBuilder.name(node.getName());
                 // 假设Node实体有countryCode和locationName字段用于组合显示
                 // String locationDisplay = buildNodeLocationDisplay(node.getCountryCode(), node.getLocationName());
                 //voBuilder.nodeLocation(node.getLocation()); // 假设Node实体有location字段
-                voBuilder.nodeServerAddress(node.getIp()); // 或 node.getHost()
-                voBuilder.nodeServerPort(node.getPort());
+                voBuilder.ip(node.getIp()); // 或 node.getHost()
+                voBuilder.port(node.getPort());
                 voBuilder.nodeLevelRequired(node.getLevelRequired());
-                voBuilder.isNodeFree(node.getIsFree());
+                voBuilder.wgPublicKey(node.getWgPublicKey());
+                voBuilder.isFree(node.getIsFree());
+                voBuilder.wgPrivateKey(node.getWgPrivateKey());
+                voBuilder.wgDns(node.getWgDns());
+
             } else {
                 log.warn("用户配置 configId={} 关联的 nodeId={} 未找到对应的Node实体！", config.getId(), config.getNodeId());
-                voBuilder.nodeName("节点信息丢失"); // 或其他默认值
+                voBuilder.name("节点信息丢失"); // 或其他默认值
                 voBuilder.nodeLocation("未知位置");
             }
             return voBuilder.build();

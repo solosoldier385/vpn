@@ -1,0 +1,41 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/pay?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: 90508888
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: 127.0.0.1
+    port: 6379
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+
+#logging:
+#  level:
+#    com.alibaba.nacos: DEBUG
+#    org.springframework.cloud: DEBUG
+#    com.alibaba.nacos.shaded.io.perfmark: ERROR
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus # 至少包含 health
+  health:
+    readinessstate:
+      enabled: true
+    livelinessstate: # spring boot 2.3+ 应该是 livenessstate
+      enabled: true
+
