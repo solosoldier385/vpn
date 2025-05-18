@@ -5,7 +5,7 @@ spring:
       # Nacos 服务器地址，用于服务发现和配置中心
       # 在 K8s 环境中，应指向 Nacos Service 的名称和 gRPC 端口 (9848 for Nacos 2.x)
       # 假设 user-service 和 nacos-service 在同一个 K8s namespace (例如 'default')
-      server-addr: nacos:9848
+      server-addr: nacos:8848
 
         # 如果 nacos-service 在不同的 namespace (例如 'nacos-ns')，则使用完整域名:
         # server-addr: nacos-service.nacos-ns.svc.cluster.local:9848

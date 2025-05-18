@@ -1,25 +1,30 @@
-# user-service/src/main/resources/bootstrap-prod.yml
 spring:
   cloud:
     nacos:
-      # Nacos 服务器地址，用于服务发现和配置中心
-      # 在 K8s 环境中，应指向 Nacos Service 的名称和 gRPC 端口 (9848 for Nacos 2.x)
-      # 假设 user-service 和 nacos-service 在同一个 K8s namespace (例如 'default')
-      server-addr: nacos:9848
+      discovery:
+        server-addr: nacos:8848
+        enabled: true
+        namespace: public
 
-        # 如果 nacos-service 在不同的 namespace (例如 'nacos-ns')，则使用完整域名:
-        # server-addr: nacos-service.nacos-ns.svc.cluster.local:9848
-        # 或者简写 (如果 K8s DNS 配置支持跨命名空间解析，通常是 <service-name>.<namespace>):
-        # server-addr: nacos-service.nacos-ns:9848
 
-        # discovery:
-        # 如果生产环境的 Nacos namespace 与 bootstrap.yml 中不同，可以在此覆盖
-        # namespace: your-prod-nacos-namespace-id
-        # group: YOUR_PROD_DISCOVERY_GROUP # 如果需要为服务发现指定特定的组
+      config:
+        server-addr: nacos:8848
+        file-extension: yaml
+#        shared-configs:
+#          - data-id: common-mysql.yaml
+#            group: LETSVPNSHARED_GROUP
+#            refresh: true
 
-        # config:
-        # 如果生产环境的 Nacos namespace 与 bootstrap.yml 中不同，可以在此覆盖
-        # namespace: your-prod-nacos-namespace-id
-        # group: YOUR_PROD_CONFIG_GROUP_FOR_APP_CONFIGS # 如果应用配置在特定组
-        # 注意：shared-configs 的 group 是 LETSVPNSHARED_GROUP，这个通常是固定的，不需要在这里改，
-      # 除非您在不同环境中有不同名称的共享配置组。
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    com.letsvpn.user: DEBUG # 确保你自己的包也是 DEBUG
+    com.letsvpn.user.mapper: DEBUG
+    com.alibaba.nacos.client.naming: DEBUG
+    com.alibaba.nacos.client.config: DEBUG
+    com.alibaba.nacos.common.remote: DEBUG # 非常重要，看RPC和连接管理细节
+    com.alibaba.nacos.shaded.io.grpc: DEBUG # 最终手段，GRPC自身的详细日志，可能非常多
+
+    # io.grpc: DEBUG # 如果需要非常底层的gRPC细节

@@ -39,6 +39,11 @@ logging:
     org.springframework.security: DEBUG
     org.springframework.web: DEBUG
     com.letsvpn.user: DEBUG # 确保你自己的包也是 DEBUG
+    com.letsvpn.user.mapper: DEBUG
+    com.alibaba.nacos.client.naming: DEBUG
+    com.alibaba.nacos.client.config: DEBUG
+    com.alibaba.nacos.common.remote: DEBUG # 非常重要，看RPC和连接管理细节
+    com.alibaba.nacos.shaded.io.grpc: DEBUG # 最终手段，GRPC自身的详细日志，可能非常多
 
 
 management:

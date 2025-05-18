@@ -15,6 +15,7 @@ import com.letsvpn.user.util.WireGuardKeyGenerator;
 import com.letsvpn.user.vo.UserNodeVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.net.util.SubnetUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional; // 推荐加上事务
 import org.springframework.util.CollectionUtils;
@@ -272,32 +273,149 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
         return newConfig;
     }
 
-    private String getNextAvailableIpForNode(Node node) {
-        // ... (保持或改进你的IPAM逻辑) ...
-        // 这是一个关键的生产逻辑，需要健壮实现
-        // 示例（非常简化，需要替换）:
-        // 获取节点配置的网络基地址，例如 node.getWgInterfaceAddress() -> "10.0.1.1/24"
-        // 从这个CIDR中找到一个未被UserNodeConfig使用的IP
-        // SELECT wg_allowed_ips FROM user_node_config WHERE node_id = :nodeId
-        // 解析这些IP，找到一个可用的。
+//    private String getNextAvailableIpForNode(Node node) {
+//        // ... (保持或改进你的IPAM逻辑) ...
+//        // 这是一个关键的生产逻辑，需要健壮实现
+//        // 示例（非常简化，需要替换）:
+//        // 获取节点配置的网络基地址，例如 node.getWgInterfaceAddress() -> "10.0.1.1/24"
+//        // 从这个CIDR中找到一个未被UserNodeConfig使用的IP
+//        // SELECT wg_allowed_ips FROM user_node WHERE node_id = :nodeId
+//        // 解析这些IP，找到一个可用的。
+//
+//        // 临时示例，确保这个逻辑是正确的
+//        String networkSegment = node.getWgAddress(); // 例如 "10.0.1.0/24" 或 "10.0.1.1/24"
+//        if (networkSegment == null || !networkSegment.contains("/")) {
+//            log.error("节点 {} 的网络段 (wg_address) 配置错误: {}", node.getId(), networkSegment);
+//            throw new BizException("节点网络配置错误，无法分配IP");
+//        }
+//        // 简化假设：总是能找到一个IP，实际需要更复杂的逻辑
+//        // 例如，从 "10.0.1.1/24" 中分配 "10.0.1.X"
+//        // 这里只是一个占位符，你需要一个真正的IPAM
+//        long count = userNodeMapper.selectCount(new QueryWrapper<UserNode>().eq("node_id", node.getId()));
+//        String[] networkParts = networkSegment.split("/")[0].split("\\.");
+//        if (networkParts.length != 4) throw new BizException("节点网络地址格式错误");
+//
+//        long nextIpSuffix = 2 + count; // 假设从.2开始，且IP是连续分配的
+//        if (nextIpSuffix > 254) throw new BizException("节点IP池已满");
+//
+//        return networkParts[0] + "." + networkParts[1] + "." + networkParts[2] + "." + nextIpSuffix;
+//    }
 
-        // 临时示例，确保这个逻辑是正确的
-        String networkSegment = node.getWgAddress(); // 例如 "10.0.1.0/24" 或 "10.0.1.1/24"
-        if (networkSegment == null || !networkSegment.contains("/")) {
-            log.error("节点 {} 的网络段 (wg_address) 配置错误: {}", node.getId(), networkSegment);
-            throw new BizException("节点网络配置错误，无法分配IP");
+    // 辅助方法：IP字符串转long (保持不变或使用库)
+    private long ipToLong(String ipAddress) {
+        String[] parts = ipAddress.split("\\.");
+        if (parts.length != 4) {
+            // 更健壮的错误处理
+            throw new IllegalArgumentException("无效的IP地址格式: " + ipAddress);
         }
-        // 简化假设：总是能找到一个IP，实际需要更复杂的逻辑
-        // 例如，从 "10.0.1.1/24" 中分配 "10.0.1.X"
-        // 这里只是一个占位符，你需要一个真正的IPAM
-        long count = userNodeMapper.selectCount(new QueryWrapper<UserNode>().eq("node_id", node.getId()));
-        String[] networkParts = networkSegment.split("/")[0].split("\\.");
-        if (networkParts.length != 4) throw new BizException("节点网络地址格式错误");
+        long result = 0;
+        for (int i = 0; i < 4; i++) {
+            result <<= 8;
+            result |= (Integer.parseInt(parts[i]) & 0xFF);
+        }
+        return result;
+    }
 
-        long nextIpSuffix = 2 + count; // 假设从.2开始，且IP是连续分配的
-        if (nextIpSuffix > 254) throw new BizException("节点IP池已满");
+    // 辅助方法：long转IP字符串 (保持不变或使用库)
+    private String longToIp(long ip) {
+        return String.format("%d.%d.%d.%d",
+                (ip >> 24 & 0xFF),
+                (ip >> 16 & 0xFF),
+                (ip >> 8 & 0xFF),
+                (ip & 0xFF));
+    }
+    /**
+     * 为指定节点分配下一个可用的Peer IP地址。
+     * @param node 包含wg_address (例如 "10.0.0.1/22") 的节点对象
+     * @return 分配到的IP地址字符串 (例如 "10.0.0.2")
+     */
+    public String getNextAvailableIpForNode(Node node) {
+        if (node == null || node.getId() == null) {
+            log.error("getNextAvailableIpForNode 调用时节点对象或节点ID为空");
+            throw new BizException("节点信息不能为空");
+        }
+        String serverCidr = node.getWgAddress(); // 例如 "10.0.0.1/22"
+        if (serverCidr == null || serverCidr.trim().isEmpty() || !serverCidr.contains("/")) {
+            log.error("节点 {} 的网络段 (wg_address) 配置错误或为空: {}", node.getId(), serverCidr);
+            throw new BizException("节点网络配置错误，无法分配IP (wg_address 无效)");
+        }
 
-        return networkParts[0] + "." + networkParts[1] + "." + networkParts[2] + "." + nextIpSuffix;
+        SubnetUtils utils;
+        try {
+            utils = new SubnetUtils(serverCidr);
+            // inclusiveHostCount=false (默认) 会排除网络地址和广播地址
+        } catch (IllegalArgumentException e) {
+            log.error("无法解析节点 {} 的CIDR: {}。错误: {}", node.getId(), serverCidr, e.getMessage());
+            throw new BizException("节点网络配置错误，无法解析CIDR");
+        }
+
+        SubnetUtils.SubnetInfo subnetInfo = utils.getInfo();
+        String serverIpStr = serverCidr.split("/")[0];
+        long serverIpLong;
+        try {
+            serverIpLong = ipToLong(serverIpStr);
+        } catch (IllegalArgumentException e) {
+            log.error("无法解析节点 {} 的服务器IP部分: {}。错误: {}", node.getId(), serverIpStr, e.getMessage());
+            throw new BizException("节点网络配置错误，无法解析服务器IP");
+        }
+
+
+        // 1. 获取所有当前已占用的 IP 地址
+        Set<Long> occupiedIps = new HashSet<>();
+        occupiedIps.add(serverIpLong); // 添加服务器自身的 IP
+
+        // 从数据库获取该节点下所有已分配给 Peers 的 AllowedIPs 列表
+        List<String> allocatedPeerWgAllowedIps = userNodeMapper.findAllocatedIpsByNodeId(node.getId());
+        if (allocatedPeerWgAllowedIps != null) {
+            for (String wgAllowedIpEntry : allocatedPeerWgAllowedIps) {
+                if (wgAllowedIpEntry != null && !wgAllowedIpEntry.trim().isEmpty()) {
+                    // wg_allowed_ips 可能包含多个IP，或单个IP带掩码，例如 "10.0.0.5/32"
+                    // 或者 "10.0.0.5/32, 192.168.1.0/24"
+                    // 我们这里只关心分配给 Peer 在 WireGuard 网络内的那个 IP
+                    // 通常是列表中的第一个 IP，并且我们只取 IP 地址部分
+                    String[] ipsInEntry = wgAllowedIpEntry.split(",");
+                    if (ipsInEntry.length > 0 && ipsInEntry[0] != null && !ipsInEntry[0].trim().isEmpty()) {
+                        String primaryPeerIpWithMask = ipsInEntry[0].trim();
+                        String peerIpStr = primaryPeerIpWithMask.split("/")[0];
+                        try {
+                            occupiedIps.add(ipToLong(peerIpStr));
+                        } catch (IllegalArgumentException e) {
+                            log.warn("无法解析节点 {} 已分配的Peer IP条目中的IP部分: {} (来自原始条目: {})。错误: {}",
+                                    node.getId(), peerIpStr, wgAllowedIpEntry, e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 从子网的可用主机IP范围开始迭代，查找第一个未被占用的IP
+        long lowUsableHostIpLong;
+        long highUsableHostIpLong;
+        try {
+            lowUsableHostIpLong = ipToLong(subnetInfo.getLowAddress());     // 子网的第一个可用主机IP
+            highUsableHostIpLong = ipToLong(subnetInfo.getHighAddress());   // 子网的最后一个可用主机IP
+        } catch (IllegalArgumentException e) {
+            log.error("无法解析节点 {} 的子网边界IP: LowAddress='{}', HighAddress='{}'. 错误: {}",
+                    node.getId(), subnetInfo.getLowAddress(), subnetInfo.getHighAddress(), e.getMessage());
+            throw new BizException("节点网络配置错误，无法解析子网边界IP");
+        }
+
+
+        for (long currentIpLong = lowUsableHostIpLong; currentIpLong <= highUsableHostIpLong; currentIpLong++) {
+            if (!occupiedIps.contains(currentIpLong)) {
+                // 找到了一个可用的 IP
+                String assignedIp = longToIp(currentIpLong);
+                log.info("为节点 {} (服务器IP: {}) 分配了新的 Peer IP: {}", node.getId(), serverIpStr, assignedIp);
+                // 注意：在高并发情况下，这里依然存在选中同一个IP的风险，需要数据库层面的锁或唯一约束来保证最终IP分配的唯一性。
+                // 例如，可以将 UserNodeConfig 表中 (node_id, peer_wg_ip) 设置为联合唯一索引。
+                return assignedIp;
+            }
+        }
+
+        // 如果循环完成，表示没有找到可用的 IP
+        log.error("节点 {} IP池已满。CIDR: {}, 可用主机范围: {} - {}. 当前已记录占用IP数量: {} (包括服务器IP)",
+                node.getId(), serverCidr, subnetInfo.getLowAddress(), subnetInfo.getHighAddress(), occupiedIps.size());
+        throw new BizException("节点IP池已满，无可用IP");
     }
 
 
@@ -418,7 +536,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
                 voBuilder.nodeLevelRequired(node.getLevelRequired());
                 voBuilder.wgPublicKey(node.getWgPublicKey());
                 voBuilder.isFree(node.getIsFree());
-                voBuilder.wgPrivateKey(node.getWgPrivateKey());
+                voBuilder.wgPrivateKey(config.getWgPeerPrivateKey());
                 voBuilder.wgDns(node.getWgDns());
 
             } else {

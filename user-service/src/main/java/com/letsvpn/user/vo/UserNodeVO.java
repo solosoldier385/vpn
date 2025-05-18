@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @Schema(description = "用户节点配置视图对象 (用于客户端展示)")
 public class UserNodeVO {
 
-    @Schema(description = "配置ID (user_node_config.id)", example = "1")
+    @Schema(description = "配置ID (user_node.id)", example = "1")
     private Long configId; // 从 UserNodeConfig.id 获取
 
     @Schema(description = "用户ID", example = "101")

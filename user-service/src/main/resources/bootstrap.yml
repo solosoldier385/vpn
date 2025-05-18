@@ -5,18 +5,16 @@ spring:
   cloud:
     nacos:
       discovery:
-#        server-addr: nacos-service:8848
         server-addr: 127.0.0.1:8848
-#        server-addr: 18.141.169.7:8848
-#        ip: 18.141.169.7
         enabled: true
         namespace: public
-        config:
-          file-extension: yaml
-          shared-configs:
-            - data-id: common-mysql.yaml
-              group: LETSVPNSHARED_GROUP
-              refresh: true
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+#        shared-configs:
+#          - data-id: common-mysql.yaml
+#            group: LETSVPNSHARED_GROUP
+#            refresh: true
 
 # 可选
 server:

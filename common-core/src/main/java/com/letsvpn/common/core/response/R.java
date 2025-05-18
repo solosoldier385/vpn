@@ -64,4 +64,8 @@ public class R<T> {
     public static <T> R<T> fail(Integer code, String msg, T data) {
         return new R<>(code, msg, data);
     }
+
+    public static boolean isSuccess(Integer code) {
+        return code == 200;
+    }
 }
