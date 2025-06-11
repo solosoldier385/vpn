@@ -67,3 +67,12 @@ app:
     vip-expiration-check:
       cron: 0 0 1 * * ? # 每天凌晨1点
       # cron: 0 */2 * * * ? # 每2分钟，用于测试
+
+
+
+wireguard:
+  key-pool:
+    batch-size: 200  # 每个节点每次生成的密钥对数量
+    min-threshold: 20 # 当可用密钥对数量低于此值时，需要补充
+    replenish-interval: "0 0 4 ? * MON" # 每周一凌晨4点补充密钥池
+    check-interval: "0 0 * * * ?" # 每小时检查一次密钥池状态

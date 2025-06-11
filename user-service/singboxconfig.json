@@ -1,0 +1,94 @@
+{
+  "log": {
+    "level": "debug",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "reality-in",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [
+        {
+          "uuid": "c093e6d4-6ec5-4e82-9479-8f382cb2ae0a",
+          "flow": "xtls-rprx-vision"
+        },
+        {
+          "uuid": "c093e6d4-6ec5-4e82-9479-8f382cb2ae0b",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "www.cloudflare.com",
+        "reality": {
+          "enabled": true,
+          "handshake": {
+            "server": "www.cloudflare.com",
+            "server_port": 443
+          },
+          "private_key": "oI-9YlMxv_6ihHm-Hnju6kMIObZnDyQLs1ov4NRAZWo",
+          "short_id": ["4f77d10f"]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "wireguard",
+      "tag": "wg-out-user1",
+      "private_key": "KCIL6LlJ0dbWFlzIu8x0rUwvgArmgSyCpeCiV9R7zVg=",
+      "local_address": ["10.0.0.11/32"],
+      "peers": [
+        {
+          "public_key": "1F6QptmmWAkYSaHunsboCyQAXSVl+bcuLI03WpSECVY=",
+          "allowed_ips": ["0.0.0.0/0"],
+          "server": "172.93.220.79",
+          "server_port": 51825
+        }
+      ],
+      "mtu": 1280
+    },
+    {
+      "type": "wireguard",
+      "tag": "wg-out-user2",
+      "private_key": "+H57TIPAnEUFJcU2pVbk+t6rXTMWEdy0/+UOmuD+pHA=",
+      "local_address": ["10.0.0.13/32"],
+      "peers": [
+        {
+          "public_key": "1F6QptmmWAkYSaHunsboCyQAXSVl+bcuLI03WpSECVY=",
+          "allowed_ips": ["0.0.0.0/0"],
+          "server": "172.93.220.79",
+          "server_port": 51825
+        }
+      ],
+      "mtu": 1280
+    },
+    {
+      "type": "direct",
+      "tag": "default-direct"
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "address": "8.8.8.8"
+      }
+    ]
+  },
+  "route": {
+    "rules": [
+      {
+        "inbound": "reality-in",
+        "user": "c093e6d4-6ec5-4e82-9479-8f382cb2ae0a",
+        "outbound": "wg-out-user1"
+      },
+      {
+        "inbound": "reality-in",
+        "user": "c093e6d4-6ec5-4e82-9479-8f382cb2ae0b",
+        "outbound": "wg-out-user2"
+      }
+    ]
+  }
+}

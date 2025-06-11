@@ -35,6 +35,7 @@ public class SecurityConfig {
             "/api/auth/register",
             // 其他需要公开访问的 API 端点
             "/api/user/node/free",
+            "/api/user/node/list",
 //            "/api/node/free",
 //            "/api/node/list"
     };

@@ -24,4 +24,6 @@ public class Node {
     private String wgPublicKey; // 服务端公钥
     private String wgPrivateKey;
     private String wgDns;
+
+    private String singboxIp;
 }

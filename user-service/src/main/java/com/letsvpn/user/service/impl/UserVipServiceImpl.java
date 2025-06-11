@@ -169,37 +169,41 @@ public class UserVipServiceImpl implements UserVipService {
                 log.info("Found {} active nodes. Processing for user {}.", allActiveNodes.size(), user.getId());
             }
 
-            for (Node node : allActiveNodes) {
-                try {
-                    log.info("Processing node ID: {} (Name: {}) for user ID: {}", node.getId(), node.getName(), user.getId());
-                    // This method will create UserNode if not exists (generating keys, IP)
-                    // or update existing one. It also contains permission logic.
-                    UserNode userNodeConfig = wireGuardConfigService.assignOrGetUserNodeConfig(user.getId(), node.getId());
-
-                    if (userNodeConfig != null && Boolean.TRUE.equals(userNodeConfig.getIsActive())) {
-                        log.info("Successfully assigned/updated user {} on node {}. UserNodeConfig ID: {}. Attempting to publish Nacos config.", user.getId(), node.getId(), userNodeConfig.getId());
-                        boolean nacosSuccess = wireguardNacosConfigService.publishConfigForNode(node.getId());
-                        if (nacosSuccess) {
-                            log.info("Nacos configuration published successfully for node ID: {}", node.getId());
-                        } else {
-                            log.warn("Failed to publish Nacos configuration for node ID: {}. Manual check might be needed.", node.getId());
-                            // Depending on strictness, you might want to collect these errors
-                        }
-                    } else if (userNodeConfig == null) {
-                        log.warn("User {} could not be assigned to node {} (assignOrGetUserNodeConfig returned null, possibly due to permissions or node setup). Skipping Nacos update for this node.", user.getId(), node.getId());
-                    } else { // userNodeConfig not null but not active
-                        log.warn("User {} assignment to node {} resulted in an inactive UserNodeConfig (ID: {}). Skipping Nacos update for this node.", user.getId(), node.getId(), userNodeConfig.getId());
-                    }
-                } catch (BizException e) {
-                    // BizException from assignOrGetUserNodeConfig usually means user doesn't have permission for this node,
-                    // or node is not configured properly for assignment. This is often an expected scenario for some nodes.
-                    log.warn("Business exception while processing node ID: {} for user ID: {}. Message: '{}'. This node may not be applicable or accessible for the user.", node.getId(), user.getId(), e.getMessage());
-                } catch (Exception e) {
-                    // Catch other unexpected exceptions during node processing or Nacos publishing.
-                    log.error("Unexpected error processing node ID: {} for user ID: {}. Nacos update for this node might be skipped.", node.getId(), user.getId(), e);
-                    // Log and continue, or collect errors to indicate partial failure.
-                }
+            for (Node allActiveNode : allActiveNodes) {
+                wireGuardConfigService.allocateKey(request.getUserId(), allActiveNode.getId());
             }
+
+//            for (Node node : allActiveNodes) {
+//                try {
+//                    log.info("Processing node ID: {} (Name: {}) for user ID: {}", node.getId(), node.getName(), user.getId());
+//                    // This method will create UserNode if not exists (generating keys, IP)
+//                    // or update existing one. It also contains permission logic.
+//                    UserNode userNodeConfig = wireGuardConfigService.assignOrGetUserNodeConfig(user.getId(), node.getId());
+//
+//                    if (userNodeConfig != null && Boolean.TRUE.equals(userNodeConfig.getIsActive())) {
+//                        log.info("Successfully assigned/updated user {} on node {}. UserNodeConfig ID: {}. Attempting to publish Nacos config.", user.getId(), node.getId(), userNodeConfig.getId());
+//                        boolean nacosSuccess = wireguardNacosConfigService.publishConfigForNode(node.getId());
+//                        if (nacosSuccess) {
+//                            log.info("Nacos configuration published successfully for node ID: {}", node.getId());
+//                        } else {
+//                            log.warn("Failed to publish Nacos configuration for node ID: {}. Manual check might be needed.", node.getId());
+//                            // Depending on strictness, you might want to collect these errors
+//                        }
+//                    } else if (userNodeConfig == null) {
+//                        log.warn("User {} could not be assigned to node {} (assignOrGetUserNodeConfig returned null, possibly due to permissions or node setup). Skipping Nacos update for this node.", user.getId(), node.getId());
+//                    } else { // userNodeConfig not null but not active
+//                        log.warn("User {} assignment to node {} resulted in an inactive UserNodeConfig (ID: {}). Skipping Nacos update for this node.", user.getId(), node.getId(), userNodeConfig.getId());
+//                    }
+//                } catch (BizException e) {
+//                    // BizException from assignOrGetUserNodeConfig usually means user doesn't have permission for this node,
+//                    // or node is not configured properly for assignment. This is often an expected scenario for some nodes.
+//                    log.warn("Business exception while processing node ID: {} for user ID: {}. Message: '{}'. This node may not be applicable or accessible for the user.", node.getId(), user.getId(), e.getMessage());
+//                } catch (Exception e) {
+//                    // Catch other unexpected exceptions during node processing or Nacos publishing.
+//                    log.error("Unexpected error processing node ID: {} for user ID: {}. Nacos update for this node might be skipped.", node.getId(), user.getId(), e);
+//                    // Log and continue, or collect errors to indicate partial failure.
+//                }
+//            }
             log.info("Finished processing nodes for user {}.", user.getId());
         } catch (Exception e) {
             log.error("An error occurred during the node provisioning and Nacos update phase for user {}: {}", user.getId(), e.getMessage(), e);

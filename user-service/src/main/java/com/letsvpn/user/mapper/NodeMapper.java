@@ -14,7 +14,7 @@ public interface NodeMapper extends BaseMapper<Node> {
     @Select("SELECT * FROM node WHERE is_free = 1 AND status = 0 LIMIT 1")
     Node selectFreeNode();
 
-    @Select("SELECT * FROM node WHERE level_required <= #{level} AND status = 0")
+    @Select("SELECT * FROM node WHERE  status = 0 order by id")
     List<Node> selectByMinLevel(@Param("level") int level);
 
     /**

@@ -9,7 +9,9 @@ import com.letsvpn.common.data.entity.UserNode;
 import com.letsvpn.common.data.mapper.UserMapper;
 import com.letsvpn.common.data.mapper.UserNodeMapper;
 import com.letsvpn.user.entity.Node;
+import com.letsvpn.user.entity.WireguardKeyPool;
 import com.letsvpn.user.mapper.NodeMapper;
+import com.letsvpn.user.mapper.WireguardKeyPoolMapper;
 import com.letsvpn.user.service.WireGuardConfigService;
 import com.letsvpn.user.util.WireGuardKeyGenerator;
 import com.letsvpn.user.vo.UserNodeVO;
@@ -34,6 +36,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
     private final UserMapper userMapper;
     private final NodeMapper nodeMapper;
     private final UserNodeMapper userNodeMapper;
+    private final WireguardKeyPoolMapper wireguardKeyPoolMapper;
     // 可能还需要注入用于IP分配、密钥生成、节点更新的服务或组件
 
     @Override
@@ -521,7 +524,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
             voBuilder.userId(config.getUserId());
             voBuilder.nodeId(config.getNodeId());
 //            voBuilder.wgPeerPublicKey(config.getWgPeerPublicKey());
-            voBuilder.wgAddress(config.getWgAllowedIps());
+            //voBuilder.wgAddress(config.getWgAllowedIps());
             voBuilder.isActive(config.getIsActive());
             voBuilder.createdAt(config.getCreatedAt());
 
@@ -529,15 +532,39 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
             if (node != null) {
                 voBuilder.name(node.getName());
                 // 假设Node实体有countryCode和locationName字段用于组合显示
-                // String locationDisplay = buildNodeLocationDisplay(node.getCountryCode(), node.getLocationName());
-                //voBuilder.nodeLocation(node.getLocation()); // 假设Node实体有location字段
-                voBuilder.ip(node.getIp()); // 或 node.getHost()
-                voBuilder.port(node.getPort());
+
+                //voBuilder.ip(node.getIp()); // 或 node.getHost()
+                //voBuilder.port(node.getPort());
                 voBuilder.nodeLevelRequired(node.getLevelRequired());
-                voBuilder.wgPublicKey(node.getWgPublicKey());
+                //voBuilder.wgPublicKey(node.getWgPublicKey());
                 voBuilder.isFree(node.getIsFree());
-                voBuilder.wgPrivateKey(config.getWgPeerPrivateKey());
+                //voBuilder.wgPrivateKey(config.getWgPeerPrivateKey());
                 voBuilder.wgDns(node.getWgDns());
+
+
+                String template = "vless://c093e6d4-6ec5-4e82-9479-8f382cb2ae0a@141.98.199.58:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.cloudflare.com&fp=chrome&pbk=gvqfZ4Wa3uZ7O1tqiVbs515qcHILVTjDmVbxacED3gQ&sid=4f77d10f&type=tcp#SG-Reality";
+
+
+                QueryWrapper<WireguardKeyPool> queryWrapper1 = new QueryWrapper<>();
+                queryWrapper1.eq("public_key", config.getWgPeerPublicKey());
+                queryWrapper1.eq("private_key", config.getWgPeerPrivateKey());
+                // queryWrapper.eq("is_active", true); // 根据业务需求决定是否只查询激活的
+
+                WireguardKeyPool keyPool = wireguardKeyPoolMapper.selectOne(queryWrapper1);
+
+                if (keyPool == null) {
+                    throw new BizException("密钥分配错误 userId: " + userId+",nodeId: " + config.getNodeId());
+                }
+
+                String uuid = keyPool.getUuid();
+                String ip = node.getSingboxIp();
+
+                String result = template
+                        .replace("c093e6d4-6ec5-4e82-9479-8f382cb2ae0a", uuid)
+                        .replace("141.98.199.58", ip);
+
+                voBuilder.vlessUri(result);
+
 
             } else {
                 log.warn("用户配置 configId={} 关联的 nodeId={} 未找到对应的Node实体！", config.getId(), config.getNodeId());
@@ -549,6 +576,348 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
 
         log.info("为用户ID {} 查询到并转换了 {} 条 UserNodeConfigVO。", userId, vos.size());
         return vos;
+    }
+
+    @Override
+    @Transactional
+    public void generateKeyPairsForAllNodes(int batchSizePerNode) {
+        log.info("开始为所有活跃节点生成密钥对，每个节点 {} 对", batchSizePerNode);
+
+        // 获取所有活跃节点
+        QueryWrapper<Node> nodeQuery = new QueryWrapper<>();
+        nodeQuery.eq("status", 0); // 状态为0表示活跃
+        List<Node> activeNodes = nodeMapper.selectList(nodeQuery);
+
+        List<Node> freeNodes = activeNodes.stream()
+                .filter(node -> node.getIsFree())
+                .collect(Collectors.toList());
+
+        List<Node> paidNodes = activeNodes.stream()
+                .filter(node -> !node.getIsFree())
+                .collect(Collectors.toList());
+
+        List<User> users = userMapper.selectList(new QueryWrapper<User>().eq("status", 0));
+
+        List<User> freeUsers = users.stream().filter(user -> user.getLevel()==0).collect(Collectors.toList());
+
+        List<User> paidUsers = users.stream().filter(user -> user.getLevel()!=0).collect(Collectors.toList());
+
+
+        for (Node node : activeNodes) {
+            try {
+                generateKeyPairsForNode(node.getId(), batchSizePerNode);
+            } catch (Exception e) {
+                log.error("为节点 {} 生成密钥对时发生错误", node.getId(), e);
+                // 继续处理其他节点
+            }
+        }
+
+        log.info("完成所有活跃节点的密钥对生成");
+
+        //为所有已有user分配
+        for (Node freeNode : freeNodes) {
+            for (User user : users) {
+                allocateKey(user.getId(), freeNode.getId());
+            }
+        }
+
+        for (Node paidNode : paidNodes) {
+            for (User paidUser : paidUsers) {
+                allocateKey(paidUser.getId(),paidNode.getId());
+            }
+        }
+
+        log.info("为已有用户分配密钥对生成");
+
+    }
+
+
+    @Override
+    @Transactional
+    public int generateKeyPairsForNode(Long nodeId, int batchSize) {
+        log.info("开始为节点 {} 生成 {} 对WireGuard密钥", nodeId, batchSize);
+        
+        Node node = nodeMapper.selectById(nodeId);
+        if (node == null) {
+            log.error("节点 {} 不存在", nodeId);
+            throw new BizException("节点不存在: " + nodeId);
+        }
+
+        // 获取该节点所有已占用的IP地址（包括user_node表和wireguard_key_pool表）
+        Set<String> occupiedIps = getOccupiedIpsForNode(nodeId);
+        
+        // 解析节点的网络配置
+        String serverCidr = node.getWgAddress();
+        if (serverCidr == null || serverCidr.trim().isEmpty() || !serverCidr.contains("/")) {
+            log.error("节点 {} 的网络段配置错误: {}", nodeId, serverCidr);
+            throw new BizException("节点网络配置错误: " + serverCidr);
+        }
+
+        // 验证节点CIDR格式
+        if (!isValidCidr(serverCidr)) {
+            log.error("节点 {} 的CIDR格式无效: {}", nodeId, serverCidr);
+            throw new BizException("节点CIDR格式无效: " + serverCidr);
+        }
+
+        // 提取节点自身的IP地址，确保不与节点自身IP冲突
+        String serverIp = serverCidr.split("/")[0];
+        String serverIpCidr = serverIp + "/32";
+        occupiedIps.add(serverIpCidr); // 添加节点自身IP到已占用列表
+        log.info("节点 {} 自身IP: {} 已添加到占用列表", nodeId, serverIpCidr);
+
+        SubnetUtils utils;
+        try {
+            utils = new SubnetUtils(serverCidr);
+        } catch (IllegalArgumentException e) {
+            log.error("无法解析节点 {} 的CIDR: {}", nodeId, serverCidr);
+            throw new BizException("无法解析节点CIDR: " + serverCidr);
+        }
+
+        SubnetUtils.SubnetInfo subnetInfo = utils.getInfo();
+        long lowUsableHostIpLong = ipToLong(subnetInfo.getLowAddress());
+        long highUsableHostIpLong = ipToLong(subnetInfo.getHighAddress());
+
+        int generatedCount = 0;
+        long currentIpLong = lowUsableHostIpLong;
+
+        for (int i = 0; i < batchSize && currentIpLong <= highUsableHostIpLong; currentIpLong++) {
+            String candidateIp = longToIp(currentIpLong);
+            String candidateCidr = candidateIp + "/32";
+            
+            // 验证生成的CIDR格式
+            if (!isValidCidr(candidateCidr)) {
+                log.warn("生成的CIDR格式无效，跳过: {}", candidateCidr);
+                continue;
+            }
+            
+            // 检查IP是否已被占用（包括节点自身IP）
+            if (!occupiedIps.contains(candidateCidr)) {
+                try {
+                    WireguardKeyPool newConfig = new WireguardKeyPool();
+                    newConfig.setNodeId(nodeId);
+
+                    WireGuardKeyGenerator.KeyPair keyPair = WireGuardKeyGenerator.generateKeyPair();
+                    newConfig.setPublicKey(keyPair.getPublicKey());
+                    newConfig.setPrivateKey(keyPair.getPrivateKey());
+                    newConfig.setAddress(candidateCidr);
+                    newConfig.setStatus(0);
+                    newConfig.setCreatedAt(LocalDateTime.now());
+                    newConfig.setUuid(UUID.randomUUID().toString());
+                    
+                    wireguardKeyPoolMapper.insert(newConfig);
+                    generatedCount++;
+                    
+                    // 将新分配的IP添加到已占用集合中，避免后续循环重复分配
+                    occupiedIps.add(candidateCidr);
+                    
+                    log.debug("为节点 {} 生成第 {} 个密钥对，分配IP: {}", nodeId, generatedCount, candidateCidr);
+                } catch (Exception e) {
+                    log.error("为节点 {} 生成第 {} 个密钥对失败", nodeId, i + 1, e);
+                }
+            } else {
+                log.debug("IP {} 已被占用，跳过", candidateCidr);
+            }
+        }
+
+        if (generatedCount < batchSize) {
+            log.warn("节点 {} 的IP池空间不足，只生成了 {} 个密钥对，请求数量: {}", nodeId, generatedCount, batchSize);
+        }
+
+        log.info("为节点 {} 成功生成 {} 对WireGuard密钥", nodeId, generatedCount);
+        return generatedCount;
+    }
+
+
+    @Override
+    @Transactional
+    public int allocateKeyPairforNode(Long nodeId, int batchSize) {
+        log.info("开始为节点 {} 生成 {} 对WireGuard密钥", nodeId, batchSize);
+
+        Node node = nodeMapper.selectById(nodeId);
+        if (node == null) throw new BizException("节点不存在: " + nodeId);
+
+        Set<String> occupiedIps = getOccupiedIpsForNode(nodeId);
+
+        String serverCidr = node.getWgAddress();
+        if (serverCidr == null || !serverCidr.contains("/")) {
+            throw new BizException("节点网络配置错误: " + serverCidr);
+        }
+
+        if (!isValidCidr(serverCidr)) {
+            throw new BizException("节点CIDR格式无效: " + serverCidr);
+        }
+
+        String baseIp = serverCidr.split("/")[0];
+        int subnetBits = Integer.parseInt(serverCidr.split("/")[1]);
+
+        // 计算每个子网最多多少主机（排除 .0 和 .255）
+        long hostsPerSubnet = (1L << (32 - subnetBits));
+
+        long currentIpLong = ipToLong(baseIp);
+        occupiedIps.add(baseIp + "/32");
+
+        int generatedCount = 0;
+        while (generatedCount < batchSize) {
+            // 遍历当前子网
+            long subnetStart = currentIpLong & (~(hostsPerSubnet - 1)); // 当前子网起点
+            long subnetEnd = subnetStart + hostsPerSubnet - 1;
+
+            for (long ipLong = subnetStart; ipLong <= subnetEnd && generatedCount < batchSize; ipLong++) {
+                String ip = longToIp(ipLong);
+                String cidr = ip + "/32";
+
+                // 跳过保留地址
+                if (ip.endsWith(".0") || ip.endsWith(".255") || !isValidCidr(cidr) || occupiedIps.contains(cidr)) {
+                    continue;
+                }
+
+                try {
+                    WireguardKeyPool newConfig = new WireguardKeyPool();
+                    newConfig.setNodeId(nodeId);
+                    WireGuardKeyGenerator.KeyPair keyPair = WireGuardKeyGenerator.generateKeyPair();
+                    newConfig.setPublicKey(keyPair.getPublicKey());
+                    newConfig.setPrivateKey(keyPair.getPrivateKey());
+                    newConfig.setAddress(cidr);
+                    newConfig.setStatus(0);
+                    newConfig.setCreatedAt(LocalDateTime.now());
+                    newConfig.setUuid(UUID.randomUUID().toString());
+
+                    wireguardKeyPoolMapper.insert(newConfig);
+                    occupiedIps.add(cidr);
+                    generatedCount++;
+
+                    log.debug("为节点 {} 分配第 {} 个 IP: {}", nodeId, generatedCount, cidr);
+                } catch (Exception e) {
+                    log.error("生成失败 IP: {}", cidr, e);
+                }
+            }
+
+            // 下一个子网
+            currentIpLong = subnetEnd + 1;
+        }
+
+        // 分配用户
+        List<User> allUsers = userMapper.selectList(new QueryWrapper<User>().eq("status", 0));
+        List<User> targetUsers = node.getIsFree()
+                ? allUsers
+                : allUsers.stream().filter(u -> u.getLevel() != 0).collect(Collectors.toList());
+
+        for (User user : targetUsers) {
+            allocateKey(user.getId(), nodeId);
+        }
+
+        log.info("为节点 {} 成功生成 {} 对WireGuard密钥", nodeId, generatedCount);
+        return generatedCount;
+    }
+
+
+
+    /**
+     * 验证CIDR格式是否有效
+     * @param cidr CIDR字符串，如 "192.168.1.0/24"
+     * @return 是否有效
+     */
+    private boolean isValidCidr(String cidr) {
+        if (cidr == null || cidr.trim().isEmpty()) {
+            return false;
+        }
+        
+        String[] parts = cidr.split("/");
+        if (parts.length != 2) {
+            return false;
+        }
+        
+        // 验证IP地址部分
+        String ip = parts[0];
+        if (!isValidIp(ip)) {
+            return false;
+        }
+        
+        // 验证子网掩码部分
+        try {
+            int mask = Integer.parseInt(parts[1]);
+            return mask >= 0 && mask <= 32;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 验证IP地址格式是否有效
+     * @param ip IP地址字符串
+     * @return 是否有效
+     */
+    private boolean isValidIp(String ip) {
+        if (ip == null || ip.trim().isEmpty()) {
+            return false;
+        }
+        
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        
+        for (String part : parts) {
+            try {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) {
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    /**
+     * 获取节点所有已占用的IP地址
+     */
+    @Override
+    public Set<String> getOccupiedIpsForNode(Long nodeId) {
+        Set<String> occupiedIps = new HashSet<>();
+        
+        // 获取节点信息，提取节点自身IP
+        Node node = nodeMapper.selectById(nodeId);
+        if (node != null && node.getWgAddress() != null && !node.getWgAddress().trim().isEmpty()) {
+            String serverCidr = node.getWgAddress();
+            if (serverCidr.contains("/")) {
+                String serverIp = serverCidr.split("/")[0];
+                String serverIpCidr = serverIp + "/32";
+                occupiedIps.add(serverIpCidr);
+                log.debug("节点 {} 自身IP: {} 已添加到占用列表", nodeId, serverIpCidr);
+            }
+        }
+        
+        // 1. 从user_node表获取已分配的IP
+        List<String> userNodeIps = userNodeMapper.findAllocatedIpsByNodeId(nodeId);
+        if (userNodeIps != null) {
+            for (String ipEntry : userNodeIps) {
+                if (ipEntry != null && !ipEntry.trim().isEmpty()) {
+                    String[] ipsInEntry = ipEntry.split(",");
+                    if (ipsInEntry.length > 0 && ipsInEntry[0] != null && !ipsInEntry[0].trim().isEmpty()) {
+                        occupiedIps.add(ipsInEntry[0].trim());
+                    }
+                }
+            }
+        }
+        
+        // 2. 从wireguard_key_pool表获取已分配的IP
+        QueryWrapper<WireguardKeyPool> keyPoolQuery = new QueryWrapper<>();
+        keyPoolQuery.eq("node_id", nodeId)
+                   .select("address");
+        List<WireguardKeyPool> keyPoolIps = wireguardKeyPoolMapper.selectList(keyPoolQuery);
+        if (keyPoolIps != null) {
+            for (WireguardKeyPool keyPool : keyPoolIps) {
+                if (keyPool.getAddress() != null && !keyPool.getAddress().trim().isEmpty()) {
+                    occupiedIps.add(keyPool.getAddress().trim());
+                }
+            }
+        }
+        
+        log.debug("节点 {} 已占用IP数量: {}", nodeId, occupiedIps.size());
+        return occupiedIps;
     }
 
     // 辅助方法示例，用于构建节点位置显示 (你可以根据Node实体实际字段调整)
@@ -565,4 +934,134 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
     //     }
     //     return locationName != null ? locationName : "未知";
     // }
+
+    @Override
+    @Transactional
+    public UserNode allocateKey(Long userId, Long nodeId) {
+        log.info("开始为用户 {} 在节点 {} 分配密钥", userId, nodeId);
+        
+        // 1. 检查user_node表是否已有该用户在该节点的配置
+        QueryWrapper<UserNode> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("user_id", userId).eq("node_id", nodeId);
+        UserNode existingConfig = userNodeMapper.selectOne(queryWrapper);
+        
+        if (existingConfig != null) {
+            log.info("用户 {} 在节点 {} 上已存在配置，直接返回。配置ID: {}", userId, nodeId, existingConfig.getId());
+            return existingConfig;
+        }
+        
+        // 2. 从wireguard_key_pool表中获取一个未分配的密钥对
+        QueryWrapper<WireguardKeyPool> keyPoolQuery = new QueryWrapper<>();
+        keyPoolQuery.eq("node_id", nodeId)
+                   .eq("status", 0) // 未分配状态
+                   .last("LIMIT 1");
+        WireguardKeyPool availableKey = wireguardKeyPoolMapper.selectOne(keyPoolQuery);
+        
+        if (availableKey == null) {
+            log.error("节点 {} 没有可用的密钥对", nodeId);
+            throw new BizException("节点密钥池已耗尽，请联系管理员");
+        }
+        
+        // 3. 创建新的user_node记录
+        UserNode newConfig = UserNode.builder()
+                .userId(userId)
+                .nodeId(nodeId)
+                .wgPeerPublicKey(availableKey.getPublicKey())
+                .wgPeerPrivateKey(availableKey.getPrivateKey())
+                .wgAllowedIps(availableKey.getAddress())
+                .isActive(true)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        
+        // 4. 保存到user_node表
+        userNodeMapper.insert(newConfig);
+        log.info("成功创建用户节点配置，ID: {}", newConfig.getId());
+        
+        // 5. 更新wireguard_key_pool记录为已分配状态
+        availableKey.setStatus(1); // 已分配
+        availableKey.setAssignedUserId(userId);
+        availableKey.setAssignedAt(LocalDateTime.now());
+        availableKey.setUpdatedAt(LocalDateTime.now());
+        wireguardKeyPoolMapper.updateById(availableKey);
+        
+        log.info("成功为用户 {} 在节点 {} 分配密钥，密钥池记录ID: {}", userId, nodeId, availableKey.getId());
+        
+        return newConfig;
+    }
+
+    @Override
+    @Transactional
+    public void cleanDuplicateAddresses() {
+        log.info("开始清理重复的IP地址");
+        int cleanedCount = wireguardKeyPoolMapper.cleanDuplicateAddresses();
+        log.info("成功清理 {} 条重复的IP地址记录", cleanedCount);
+    }
+
+    @Override
+    @Transactional
+    public void cleanAllKeysByNodeId(Long nodeId) {
+        log.info("开始清理节点 {} 的所有密钥对", nodeId);
+        int cleanedCount = wireguardKeyPoolMapper.cleanAllKeysByNodeId(nodeId);
+        log.info("成功清理节点 {} 的 {} 条密钥对记录", nodeId, cleanedCount);
+    }
+
+    @Override
+    public String generateWgConfigForNodeFromKeyPool(Long nodeId) {
+        Node node = nodeMapper.selectById(nodeId);
+        if (node == null) {
+            log.error("无法生成配置: 未找到 ID 为 {} 的节点.", nodeId);
+            return null;
+        }
+        if (node.getWgPrivateKey() == null || node.getWgPrivateKey().isEmpty()) {
+            log.error("无法为节点 ID {} 生成配置: wgPrivateKey 缺失.", nodeId);
+            return null;
+        }
+        if (node.getPort() == null) {
+            log.error("无法为节点 ID {} 生成配置: port (ListenPort) 缺失.", nodeId);
+            return null;
+        }
+
+        // 查询 wireguard_key_pool 表中该节点的所有已分配密钥
+        QueryWrapper<WireguardKeyPool> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("node_id", nodeId);
+                   //.eq("status", 1) // 1-已分配
+                   //.isNotNull("assigned_user_id");
+        List<WireguardKeyPool> allocatedKeys = wireguardKeyPoolMapper.selectList(queryWrapper);
+
+        StringBuilder sb = new StringBuilder();
+        // [Interface] 部分
+        sb.append("[Interface]\n");
+        sb.append("# Node: ").append(node.getName()).append(" (ID: ").append(nodeId).append(")\n");
+        sb.append("# 注意: 此配置文件主要用于 wg syncconf 更新 Peers。接口IP地址 (Address) 和路由需通过其他方式管理。\n");
+        sb.append("PrivateKey = ").append(node.getWgPrivateKey()).append("\n");
+        sb.append("ListenPort = ").append(node.getPort()).append("\n");
+        sb.append("\n");
+
+        // [Peer] 部分
+        if (allocatedKeys != null && !allocatedKeys.isEmpty()) {
+            // 对 Peers 进行排序，以确保配置文件内容的顺序稳定性
+            allocatedKeys.sort(Comparator.comparing(WireguardKeyPool::getAssignedUserId, Comparator.nullsLast(Comparator.naturalOrder())));
+
+            for (WireguardKeyPool keyPool : allocatedKeys) {
+                if (keyPool.getPublicKey() == null || keyPool.getPublicKey().isEmpty() ||
+                        keyPool.getAddress() == null || keyPool.getAddress().isEmpty()) {
+                    log.warn("跳过节点 ID {} 上的用户 ID {} 的 Peer，原因：缺少 PublicKey 或 Address.", nodeId, keyPool.getAssignedUserId());
+                    continue;
+                }
+                sb.append("[Peer]\n");
+                sb.append("# UserID: ").append(keyPool.getAssignedUserId()).append("\n");
+                sb.append("PublicKey = ").append(keyPool.getPublicKey()).append("\n");
+                sb.append("AllowedIPs = ").append(keyPool.getAddress()).append("\n");
+                sb.append("\n");
+            }
+        }
+
+        String configContent = sb.toString();
+        log.info("成功生成节点 ID {} 的 WireGuard 配置内容. 包含 {} 个 Peer.", nodeId, 
+                allocatedKeys != null ? allocatedKeys.size() : 0);
+        log.debug("为节点 {} 生成的配置内容:\n{}", nodeId, configContent);
+        
+        return configContent;
+    }
 }

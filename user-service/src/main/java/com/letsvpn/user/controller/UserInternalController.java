@@ -34,7 +34,6 @@ public class UserInternalController {
         log.info("Received internal request to initialize user: {}", request.getUsername());
         try {
             userService.initializeNewUser(request.getUserId(), request.getUsername());
-
             log.info("Successfully initialized user: {}", request.getUsername());
             return R.success();
         } catch (Exception e) {

@@ -5,20 +5,22 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.data.entity.User;
+import com.letsvpn.common.data.entity.UserNode;
 import com.letsvpn.common.data.mapper.UserMapper;
+import com.letsvpn.common.data.mapper.UserNodeMapper;
 import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.enums.VipLevel;
 import com.letsvpn.user.mapper.NodeMapper;
 import com.letsvpn.user.service.NodeService;
 import com.letsvpn.user.service.UserService;
 import com.letsvpn.user.service.WireGuardConfigService;
-import com.letsvpn.user.vo.UserInfoVO;
+import com.letsvpn.user.service.WireguardNacosConfigService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -29,14 +31,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private UserMapper userMapper;
 
     @Autowired
-    private NodeService nodeService; // 保持注入，因为 NodeService 可能有其他职责
+    private UserNodeMapper userNodeMapper;
 
     @Autowired
-    private NodeMapper nodeMapper; // 新增注入 NodeMapper 用于查询免费节点
+    private NodeService nodeService;
 
     @Autowired
-    private WireGuardConfigService wireGuardConfigService; // 新增注入 WireGuardConfigService
+    private NodeMapper nodeMapper;
 
+    @Autowired
+    private WireGuardConfigService wireGuardConfigService;
+
+    @Autowired
+    private WireguardNacosConfigService wireguardNacosConfigService;
 
     @Override
     public User findByUsername(String username) {
@@ -44,50 +51,52 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .eq(User::getUsername, username));
     }
 
-
-
     @Override
-    @Transactional // 建议对涉及多个数据库写操作的方法使用事务
+    @Transactional
     public void initializeNewUser(String userId, String username) {
-        // 检查用户是否已存在 (通过 auth-service 传递过来的 userId，它应该是全局唯一的)
-        User user = userMapper.selectById(userId);
+        log.info("开始初始化新用户: userId={}, username={}", userId, username);
 
+        // 1. 创建用户记录
+//        User user = new User();
+//        user.setId(Long.parseLong(userId));
+//        user.setUsername(username);
+//        user.setLevel(VipLevel.FREE.getCode()); // 设置初始等级为免费用户
+//
+//        try {
+//            userMapper.insert(user);
+//            log.info("用户记录创建成功: userId={}", userId);
+//        } catch (Exception e) {
+//            log.error("创建用户记录失败: userId={}", userId, e);
+//            throw new BizException("创建用户记录失败: " + e.getMessage());
+//        }
 
-        // 为新创建的、vipLevel为NO_VIP的用户分配免费节点
-        // user 对象是从 auth-service 传来的，应该已经设置了 vipLevel = 0 (VipLevel.NO_VIP.getLevel())
-        if (user.getLevel() != null && user.getLevel().equals(VipLevel.FREE.getCode())) {
-            log.info("用户 {} 是新注册的普通用户 (VIP级别 {})，开始分配免费节点。", user.getId(), user.getLevel());
+        // 2. 获取免费节点列表
+        QueryWrapper<Node> nodeQuery = new QueryWrapper<>();
+        nodeQuery.eq("is_free", true)  // 免费节点
+                .eq("status", 0);      // 状态正常
+        List<Node> freeNodes = nodeMapper.selectList(nodeQuery);
 
-            QueryWrapper<Node> freeNodesQuery = new QueryWrapper<>();
-            freeNodesQuery.lambda().eq(Node::getLevelRequired, VipLevel.FREE.getCode());
-            List<Node> freeNodes = nodeMapper.selectList(freeNodesQuery);
-
-            if (freeNodes.isEmpty()) {
-                log.info("系统中没有配置免费节点，用户 {} 无免费节点可分配。", user.getId());
-            } else {
-                log.info("发现 {} 个免费节点，正在为用户 {} 分配...", freeNodes.size(), user.getId());
-                for (Node freeNode : freeNodes) {
-                    try {
-                        // 调用现有的密钥分配逻辑
-                        // createUserNodeConfig 内部应能处理用户已拥有此节点配置的情况 (幂等性)
-                        log.debug("为用户 {} 分配免费节点 ID: {}", user.getId(), freeNode.getId());
-                        wireGuardConfigService.assignOrGetUserNodeConfig(user.getId(), freeNode.getId());
-                        log.info("成功为用户 {} 分配免费节点 ID: {}", user.getId(), freeNode.getId());
-                    } catch (Exception e) {
-                        // 记录错误，但继续尝试分配其他免费节点
-                        log.error("为用户 {} 分配免费节点 ID: {} 时发生错误: {}", user.getId(), freeNode.getId(), e.getMessage(), e);
-                    }
-                }
-            }
-        } else {
-            log.info("用户 {} (VIP级别: {}) 不是新注册的普通用户，或VIP级别未正确设置，跳过自动分配免费节点流程。",
-                    user.getId(), user.getLevel());
+        if (freeNodes.isEmpty()) {
+            log.warn("没有可用的免费节点，用户 {} 将无法使用VPN服务", username);
+            return;
         }
+
+        // 3. 为每个免费节点分配密钥
+        for (Node node : freeNodes) {
+            try {
+                // 使用新的allocateKey方法分配密钥
+                UserNode userNode = wireGuardConfigService.allocateKey(Long.valueOf(userId), node.getId());
+                
+                // 更新Nacos配置
+                //wireguardNacosConfigService.publishConfigForNode(node.getId());
+                
+                log.info("成功为用户 {} 在节点 {} 分配密钥", username, node.getId());
+            } catch (Exception e) {
+                log.error("为用户 {} 在节点 {} 分配密钥失败", username, node.getId(), e);
+                // 继续处理其他节点，不中断整个流程
+            }
+        }
+
+        log.info("用户初始化完成: userId={}, username={}", userId, username);
     }
-
-
-
-
-
-
 }

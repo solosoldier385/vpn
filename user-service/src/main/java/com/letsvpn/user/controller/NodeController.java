@@ -12,6 +12,7 @@ import com.letsvpn.user.entity.Node;
 import com.letsvpn.user.mapper.NodeMapper;
 import com.letsvpn.user.service.NodeService;
 import com.letsvpn.user.service.WireGuardConfigService;
+import com.letsvpn.user.vo.NodeVO;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -38,6 +39,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Tag(name = "节点信息", description = "获取可用节点信息的接口") // <--- 添加 Controller 分组 Tag
 @RestController
@@ -65,48 +67,39 @@ public class NodeController {
 
     // @CheckVip // 这个自定义注解 Swagger 无法直接识别其作用，需要在 description 中说明
     @GetMapping("/list")
-    @Operation(summary = "获取可用节点列表", description = "获取当前认证用户可用的所有节点列表（包括免费和VIP节点）。需要有效的 Bearer Token 认证。同时受 @CheckVip 限制（需要用户为VIP）。") // <--- 添加 Operation
-    @SecurityRequirement(name = "bearerAuth") // <--- 指定需要 bearerAuth 认证
-    @ApiResponses(value = { // <--- 添加 ApiResponses
+    @Operation(summary = "获取可用节点列表", description = "获取所有可用的节点列表（包括免费和VIP节点）。此接口无需认证，任何人都可访问。")
+    @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "获取成功",
                     content = @Content(mediaType = "application/json",
-                            // 描述 R<List<Node>> 结构，data 字段是一个 Node 数组
-                            schema = @Schema(implementation = R.class) // 尝试让Springdoc推断 R<List<Node>>
-                            // 如果上面推断不清晰，可以用下面更具体的描述(但可能更复杂)：
-                            /* schema = @Schema(allOf = R.class, properties = {
-                                 @ExtensionProperty(name = "data", value = """
-                                  { "type": "array", "items": { "$ref": "#/components/schemas/Node" } }
-                                 """)
-                            })*/
-                            // 或者直接描述 data 部分的内容：
-                            /* array = @ArraySchema(schema = @Schema(implementation = Node.class)) */
+                            schema = @Schema(implementation = R.class)
                     )
             ),
-            @ApiResponse(responseCode = "401", description = "未授权或 Token 无效", content = @Content),
-            @ApiResponse(responseCode = "500", description = "服务器内部错误或用户不存在", content = @Content)
+            @ApiResponse(responseCode = "500", description = "服务器内部错误", content = @Content)
     })
-    public R<List<Node>> listVipNodes(
-            @Parameter(description = "认证 Token (需要 'Bearer ' 前缀)", required = true, in = ParameterIn.HEADER, name = "Authorization") // <--- 添加 Parameter 描述
-            @RequestHeader("Authorization") String authHeader
-            // 注意：这里方法内部是自己解析 Token 获取 username，而不是依赖 Principal
-            // 这意味着网关那边可以不用修改 GlobalAuthFilter 来添加 X-User-Name 了
-            // 但也意味着 user-service 需要依赖 JwtUtils 和 UserMapper，并且会重复解析 Token
-    ) {
-        String token = authHeader.replace("Bearer ", "");
-        String username = JwtUtils.getSubject(token); // 自己解析 Token
-        if (username == null) {
-            // 这里应该返回 401 或 400 更合适，但遵循现有逻辑返回 R.fail
-            return R.fail("无效Token");
+    public R<List<NodeVO>> listVipNodes() {
+        try {
+            // 查询所有状态正常的节点
+            List<Node> nodes = nodeMapper.selectByMinLevel(0);
+            
+            // 转换为NodeVO，过滤敏感字段
+            List<NodeVO> nodeVOs = nodes.stream()
+                    .map(node -> NodeVO.builder()
+                            .id(node.getId())
+                            .name(node.getName())
+                            .levelRequired(node.getLevelRequired())
+                            .isFree(node.getIsFree())
+                            .status(node.getStatus())
+                            .createdAt(node.getCreatedAt())
+                            .updatedAt(node.getUpdatedAt())
+                            .wgDns(node.getWgDns())
+                            .build())
+                    .collect(Collectors.toList());
+            
+            return R.success(nodeVOs);
+        } catch (Exception e) {
+            log.error("获取节点列表失败", e);
+            return R.fail("获取节点列表失败: " + e.getMessage());
         }
-
-        User user = userMapper.selectByUsername(username); // 查询用户
-        if (user == null) {
-            return R.fail("用户不存在");
-        }
-
-        int level = getVipLevel(user.getVipExpireTime()); // 根据 VIP 时间计算等级
-        List<Node> nodes = nodeMapper.selectByMinLevel(level); // 查询节点
-        return R.success(nodes);
     }
 
     // 这个私有方法 Swagger 不会关心

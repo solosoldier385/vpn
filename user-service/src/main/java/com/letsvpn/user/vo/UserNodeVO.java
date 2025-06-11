@@ -71,4 +71,7 @@ public class UserNodeVO {
     @Schema(description = "dns", example = "10.0.0.1")
     private String wgDns;    // UserNodeConfig.wgAllowedIps
 
+    @Schema(description = "vless uri", example = "vless://c093e6d4-6ec5-4e82-9479-8f382cb2ae0a@141.98.199.58:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.cloudflare.com&fp=chrome&pbk=gvqfZ4Wa3uZ7O1tqiVbs515qcHILVTjDmVbxacED3gQ&sid=4f77d10f&type=tcp#SG-Reality")
+    private String vlessUri;
+
 }
