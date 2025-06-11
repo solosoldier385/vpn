@@ -1,9 +1,0 @@
-com/letsvpn/gateway/filter/GlobalAuthFilter.class
-com/letsvpn/gateway/config/BearerTokenServerAuthenticationConverter.class
-com/letsvpn/gateway/GatewayApplication.class
-com/letsvpn/gateway/config/SecurityConfig.class
-com/letsvpn/gateway/DebugSwaggerProps.class
-com/letsvpn/gateway/config/RateLimiterConfig.class
-com/letsvpn/gateway/config/CustomServerAuthenticationFailureHandler.class
-com/letsvpn/gateway/config/CustomServerAuthenticationEntryPoint.class
-com/letsvpn/gateway/config/JwtAuthenticationManager.class
