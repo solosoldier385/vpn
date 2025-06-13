@@ -65,6 +65,29 @@ spring:
               args:
                 regexp: /api/auth/(?<segment>.*)
                 replacement: /auth/${segment}
+
+
+        - id: pay-swagger
+          uri: lb://pay-service
+          predicates:
+            - Path=/api/pay/swagger-ui.html, /api/pay/swagger-ui/**, /api/pay/v3/api-docs, /api/pay/swagger-ui/index.html
+
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/pay/(?<segment>.*)
+                replacement: /${segment}
+
+        - id: pay-service
+          uri: lb://pay-service
+          predicates:
+            #            - Path=/api/auth/**
+            - Path=/api/pay/**
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/pay/(?<segment>.*)
+                replacement: /pay/${segment}
 springdoc:
   swagger-ui:
     enabled: true
@@ -74,6 +97,8 @@ springdoc:
         url: /api/user/v3/api-docs
       - name: auth
         url: /api/auth/v3/api-docs
+      - name: pay
+        url: /api/pay/v3/api-docs
   api-docs:
     enabled: true
     path: /v3/api-docs

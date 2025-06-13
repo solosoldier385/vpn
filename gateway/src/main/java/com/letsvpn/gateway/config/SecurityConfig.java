@@ -36,8 +36,13 @@ public class SecurityConfig {
             // 其他需要公开访问的 API 端点
             "/api/user/node/free",
             "/api/user/node/list",
-//            "/api/node/free",
-//            "/api/node/list"
+            // 添加支付接口到白名单
+            //"/api/pay/req",
+            //"/api/pay/**",
+            //支付回调
+            "/api/pay/channel/list",
+            "/api/pay/notify**",
+            "/api/pay/notify*/**"
     };
 
     // 放行通过网关访问的、聚合的各微服务的 API Docs 路径

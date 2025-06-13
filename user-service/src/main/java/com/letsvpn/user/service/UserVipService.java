@@ -1,8 +1,8 @@
 // 文件路径: user-service/src/main/java/com/letsvpn/user/service/UserVipService.java
 package com.letsvpn.user.service;
 
-import com.letsvpn.user.dto.ActivateVipSubscriptionRequest;
-import com.letsvpn.user.dto.ActivateVipSubscriptionResponse;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionRequest;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionResponse;
 import com.letsvpn.user.dto.CurrentUserVipProfileResponse;
 
 public interface UserVipService {

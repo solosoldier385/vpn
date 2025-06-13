@@ -39,3 +39,8 @@ management:
     livelinessstate: # spring boot 2.3+ 应该是 livenessstate
       enabled: true
 
+
+
+wanli:
+  sign:
+    check: 0

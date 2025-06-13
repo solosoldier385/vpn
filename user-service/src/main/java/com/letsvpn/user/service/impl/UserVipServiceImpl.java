@@ -3,12 +3,12 @@ package com.letsvpn.user.service.impl;
 
 import com.letsvpn.common.core.exception.BizException;
 import com.letsvpn.common.data.entity.User;
-import com.letsvpn.common.data.entity.UserNode;
 import com.letsvpn.common.data.mapper.UserMapper;
-import com.letsvpn.user.dto.ActivateVipSubscriptionRequest;
-import com.letsvpn.user.dto.ActivateVipSubscriptionResponse;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionRequest;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionResponse;
 import com.letsvpn.user.dto.CurrentUserVipProfileResponse;
 import com.letsvpn.user.entity.Node;
+import com.letsvpn.user.entity.SubscriptionPlan;
 import com.letsvpn.user.entity.UserSubscription;
 import com.letsvpn.user.enums.VipLevel;
 import com.letsvpn.user.mapper.NodeMapper;
@@ -111,11 +111,13 @@ public class UserVipServiceImpl implements UserVipService {
             throw new BizException("用户不存在: " + request.getUserId());
         }
 
+        SubscriptionPlan subscriptionPlan = subscriptionPlanMapper.selectById(request.getPlanId());
+
         // 校验 targetVipLevelCode 是否有效
-        VipLevel targetVipLevel = VipLevel.getByCode(request.getTargetVipLevelCode());
-        if (targetVipLevel == VipLevel.FREE && request.getPlanDurationDays() > 0) {
+        VipLevel targetVipLevel = VipLevel.getByCode(subscriptionPlan.getAssociatedVipLevelCode());
+        if (targetVipLevel == VipLevel.FREE && subscriptionPlan.getDurationDays() > 0) {
             // 通常付费套餐不应将用户等级设置为免费
-            log.error("激活VIP失败：目标VIP等级配置错误。planId={}, targetVipLevelCode={}", request.getPlanId(), request.getTargetVipLevelCode());
+            log.error("激活VIP失败：目标VIP等级配置错误。planId={}, targetVipLevelCode={}", request.getPlanId(), subscriptionPlan.getAssociatedVipLevelCode());
             throw new BizException("套餐对应的VIP等级配置无效");
         }
 
@@ -132,13 +134,13 @@ public class UserVipServiceImpl implements UserVipService {
             // 用户已经是VIP且未过期，则在原到期时间基础上续期
             newStartTime = currentVipExpireTime;
         }
-        LocalDateTime newVipExpireTime = newStartTime.plusDays(request.getPlanDurationDays());
+        LocalDateTime newVipExpireTime = newStartTime.plusDays(subscriptionPlan.getDurationDays());
 
-        user.setLevel(request.getTargetVipLevelCode());
+        user.setLevel(subscriptionPlan.getAssociatedVipLevelCode());
         user.setVipExpireTime(newVipExpireTime);
         user.setUpdateTime(now); // 更新用户表的修改时间
         userMapper.updateById(user);
-        log.info("用户表已更新：userId={}, newLevel={}, newExpireTime={}", user.getId(), request.getTargetVipLevelCode(), newVipExpireTime);
+        log.info("用户表已更新：userId={}, newLevel={}, newExpireTime={}", user.getId(), subscriptionPlan.getAssociatedVipLevelCode(), newVipExpireTime);
 
         UserSubscription subscription = new UserSubscription();
         subscription.setUserId(user.getId());

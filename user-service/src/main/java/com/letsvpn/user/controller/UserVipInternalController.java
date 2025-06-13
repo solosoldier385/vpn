@@ -2,8 +2,8 @@
 package com.letsvpn.user.controller;
 
 import com.letsvpn.common.core.response.R;
-import com.letsvpn.user.dto.ActivateVipSubscriptionRequest;
-import com.letsvpn.user.dto.ActivateVipSubscriptionResponse;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionRequest;
+import com.letsvpn.common.core.dto.ActivateVipSubscriptionResponse;
 import com.letsvpn.user.entity.SubscriptionPlan; // 如果需要返回这个
 import com.letsvpn.user.service.SubscriptionPlanService;
 import com.letsvpn.user.service.UserVipService;

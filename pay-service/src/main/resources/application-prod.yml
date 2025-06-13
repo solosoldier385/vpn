@@ -1,7 +1,7 @@
 spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/pay?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: pay_user
+    username: letsvpn_user
     password: LetsvpnUser@2025
     driver-class-name: com.mysql.cj.jdbc.Driver
 
@@ -18,6 +18,12 @@ spring:
 #    host: 10.10.0.1
     host: 127.0.0.1
     port: 6379
+
+
+
+wanli:
+  sign:
+    check: 0
 
 mybatis-plus:
   configuration:
