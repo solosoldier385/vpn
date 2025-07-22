@@ -524,7 +524,7 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
             voBuilder.userId(config.getUserId());
             voBuilder.nodeId(config.getNodeId());
 //            voBuilder.wgPeerPublicKey(config.getWgPeerPublicKey());
-            //voBuilder.wgAddress(config.getWgAllowedIps());
+            voBuilder.wgAddress(config.getWgAllowedIps());
             voBuilder.isActive(config.getIsActive());
             voBuilder.createdAt(config.getCreatedAt());
 
@@ -533,12 +533,12 @@ public class WireGuardConfigServiceImpl implements WireGuardConfigService {
                 voBuilder.name(node.getName());
                 // 假设Node实体有countryCode和locationName字段用于组合显示
 
-                //voBuilder.ip(node.getIp()); // 或 node.getHost()
-                //voBuilder.port(node.getPort());
+                voBuilder.ip(node.getIp()); // 或 node.getHost()
+                voBuilder.port(node.getPort());
                 voBuilder.nodeLevelRequired(node.getLevelRequired());
-                //voBuilder.wgPublicKey(node.getWgPublicKey());
+                voBuilder.wgPublicKey(node.getWgPublicKey());
                 voBuilder.isFree(node.getIsFree());
-                //voBuilder.wgPrivateKey(config.getWgPeerPrivateKey());
+                voBuilder.wgPrivateKey(config.getWgPeerPrivateKey());
                 voBuilder.wgDns(node.getWgDns());
 
 

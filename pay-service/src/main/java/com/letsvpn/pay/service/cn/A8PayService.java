@@ -78,11 +78,24 @@ public class A8PayService extends BaseThirdService implements IPayThirdRequest, 
             resultText = hr.executeAsync().body();
             log.debug("resultText:{}", resultText);
             String etype = channel.getExtractType();
-            if (StrUtil.isEmpty(etype)) {
-                etype = PayConfigChannelExtractType.html.name();
-            }
+//            if (StrUtil.isEmpty(etype)) {
+//                etype = PayConfigChannelExtractType.html.name();
+//            }
+//            result.setMethod(PayCallMethod.valueOf(payConfigInfo.getCallMethod()));
+//            result.setHtml(resultText);
+
             result.setMethod(PayCallMethod.valueOf(payConfigInfo.getCallMethod()));
-            result.setHtml(resultText);
+            if (etype.compareTo(String.valueOf(PayConfigChannelExtractType.json)) == 0) {
+                JSONObject json = JSONUtil.parseObj(resultText);
+                String redirect = ThirdUtil.getJsonField(channel, json);
+                if (StrUtil.isEmpty(redirect)) {
+                    throw new WanliException(resultText);
+                }
+                result.setLink(redirect);
+            }
+
+
+
         } catch (WanliException e) {
             log.error(e.getMessage(), e);
            add(merchantInfo.getPlatformId(), payConfigInfo.getId(), channel.getId(),
