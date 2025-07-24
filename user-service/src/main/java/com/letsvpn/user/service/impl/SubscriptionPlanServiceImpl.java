@@ -74,6 +74,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
             builder.pricePerDayInfo(plan.getPricePerDayInfo());
 
 
+
             // 确保 associatedVipLevelCode 有值
             if (plan.getAssociatedVipLevelCode() == null) {
                 log.warn("套餐 '{}' (ID:{}) 未配置 associatedVipLevelCode! 这可能导致客户端无法正确识别购买后的等级。",
@@ -82,7 +83,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 // 或者 DTO 中此字段设为 Integer 而不是 int，以允许 null
             }
             builder.associatedVipLevelCode(plan.getAssociatedVipLevelCode());
-
+            builder.type(plan.getType());
             return builder.build();
         }).collect(Collectors.toList());
     }

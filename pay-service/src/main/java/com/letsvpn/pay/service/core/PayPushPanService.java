@@ -113,10 +113,15 @@ public class PayPushPanService extends BaseService {
         // === 新增：支付成功后自动开通订阅 ===
         try {
             java.util.Map<java.math.BigDecimal, Long> amountPlanMap = new java.util.HashMap<>();
-            amountPlanMap.put(new java.math.BigDecimal("10.00"), 1L);
-            amountPlanMap.put(new java.math.BigDecimal("30.00"), 2L);
-            amountPlanMap.put(new java.math.BigDecimal("80.00"), 3L);
-            amountPlanMap.put(new java.math.BigDecimal("299.00"), 4L);
+            amountPlanMap.put(new java.math.BigDecimal("11.41"), 1L);
+            amountPlanMap.put(new java.math.BigDecimal("26.91"), 2L);
+            amountPlanMap.put(new java.math.BigDecimal("63.10"), 3L);
+            amountPlanMap.put(new java.math.BigDecimal("229.63"), 4L);
+
+			amountPlanMap.put(new java.math.BigDecimal("17.17"), 5L);
+			amountPlanMap.put(new java.math.BigDecimal("38.42"), 6L);
+			amountPlanMap.put(new java.math.BigDecimal("88.95"), 7L);
+			amountPlanMap.put(new java.math.BigDecimal("310.02"), 8L);
 
 
             Long planId = amountPlanMap.get(info.getReqAmount());

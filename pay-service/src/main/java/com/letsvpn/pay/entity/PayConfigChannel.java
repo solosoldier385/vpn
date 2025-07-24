@@ -80,4 +80,7 @@ public class PayConfigChannel implements Serializable {
     @TableField("extract_prefix")
     private String extractPrefix;
 
+    @TableField("status")
+    private Integer status;
+
 }

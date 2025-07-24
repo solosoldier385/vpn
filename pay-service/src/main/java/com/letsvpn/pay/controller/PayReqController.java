@@ -3,6 +3,7 @@ package com.letsvpn.pay.controller;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.letsvpn.common.core.util.AuthContextHolder;
 import com.letsvpn.pay.service.core.PayReqService;
 import com.letsvpn.pay.util.KeyValue;
@@ -111,7 +112,9 @@ public class PayReqController extends BaseController {
 	@GetMapping("/channel/list")
 	public R<List<PayConfigChannel>> listPayChannels() {
 		try {
-			List<PayConfigChannel> list = payConfigChannelService.list();
+			QueryWrapper<PayConfigChannel> queryWrapper = new QueryWrapper<>();
+			queryWrapper.eq("status",1);
+			List<PayConfigChannel> list = payConfigChannelService.list(queryWrapper);
 			return R.success(list);
 		} catch (Exception e) {
 			logger.error("获取支付渠道列表失败", e);

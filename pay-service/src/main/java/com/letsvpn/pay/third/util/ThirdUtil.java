@@ -25,9 +25,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
+import java.security.*;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -202,7 +202,7 @@ public class ThirdUtil {
 				|| "base64Md5Upper".equals(type) || "rc4ToHex".equals(type) || "sha512Upper".equals(type)
 				|| "sha512Lower".equals(type) || "hmacSHA256".equals(type) || "hmacSHA256Hex".equals(type)
 				|| "hmacSHA1".equals(type) || "lowerSHA256Upper".equals(type) || "hmacSHA384Upper".equals(type)
-				|| "hmacSHA384Lower".equals(type)) {
+				|| "hmacSHA384Lower".equals(type)||"SHA256WithRSA".equals(type)) {
 
  			for (Entry<String, String> map : paramsMap.entrySet()) {
 				log.debug(map.getKey() + "-----" + map.getValue());
@@ -277,6 +277,17 @@ public class ThirdUtil {
 				byte[] enStr = rsa.encrypt(payValue.getBytes(), KeyType.PrivateKey);
 				payValue = new String(enStr);
 			}
+			if("SHA256WithRSA".equals(type)){
+//				payValue = SHA256WithRSAUtils.buildRSAEncryptByPrivateKey(payValue,paramsMap.get("privateKey1"));
+
+                try {
+                    PrivateKey privateKey = getPrivateKey(paramsMap.get("privateKey1"));
+                    payValue = sign(payValue, privateKey);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
 			if ("jsonBase64".equals(type)) {
 				payValue = Base64.encode(payValue.getBytes());
 //				paramsMap.put(key, payValue);
@@ -515,6 +526,23 @@ public class ThirdUtil {
 					urlEncodeUTF8(entry.getValue().toString())));
 		}
 		return sb.toString();
+	}
+
+	public static PrivateKey getPrivateKey(String base64PrivateKey) throws Exception {
+
+		byte[] keyBytes = java.util.Base64.getDecoder().decode(base64PrivateKey);
+		PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
+		KeyFactory kf = KeyFactory.getInstance("RSA");
+		return kf.generatePrivate(keySpec);
+	}
+
+	// 执行SHA256withRSA签名
+	public static String sign(String content, PrivateKey privateKey) throws Exception {
+		Signature signature = Signature.getInstance("SHA256withRSA");
+		signature.initSign(privateKey);
+		signature.update(content.getBytes(StandardCharsets.UTF_8));
+		byte[] signed = signature.sign();
+		return java.util.Base64.getEncoder().encodeToString(signed);
 	}
 
 	/**

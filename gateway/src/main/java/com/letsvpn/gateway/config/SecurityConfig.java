@@ -42,7 +42,9 @@ public class SecurityConfig {
             //支付回调
             "/api/pay/channel/list",
             "/api/pay/notify**",
-            "/api/pay/notify*/**"
+            "/api/pay/notify*/**",
+            //app版本
+            "/api/user/app/version"
     };
 
     // 放行通过网关访问的、聚合的各微服务的 API Docs 路径

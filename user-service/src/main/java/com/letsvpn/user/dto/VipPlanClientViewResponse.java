@@ -23,4 +23,5 @@ public class VipPlanClientViewResponse {
     private boolean recommended; // 注意: boolean 类型
     private String pricePerDayInfo;
     private Integer associatedVipLevelCode;
+    private String type;
 }

@@ -23,6 +23,8 @@ public class SubscriptionPlan {
 
     private String name; // 例如：周会员, 月会员
 
+    private String type;// 青铜 白金
+
     private BigDecimal price;
 
     private Integer durationDays; // 持续天数
